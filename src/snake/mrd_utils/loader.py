@@ -378,7 +378,48 @@ class MRDLoader(LogMixin):
         """Load the coil covariance from the dataset."""
         return self._get_image_data("coil_cov")
 
+class SliceDataloader(MRDLoader):
+    """Load slice MRD files k-space frames iteratively."""
 
+    def __init__(self,
+                 frame_dl: MRDLoader,
+                 ): 
+        super().__init__(
+            filename=frame_dl._filename,
+            dataset_name=frame_dl._dataset_name,
+            writeable=frame_dl._writeable,
+            swmr=frame_dl._swmr,
+            squeeze_dims=frame_dl._squeeze_dims
+        )
+        self.frame = frame_dl
+        self.is_cartesian = isinstance(self.frame, CartesianFrameDataLoader)
+        self.is_non_cartesian = isinstance(self.frame, NonCartesianFrameDataLoader)
+        self.get_kspace_frame = self._get_kspace_frame
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.frame, name)
+
+    @property
+    def n_frames(self) -> int:
+        """Number of frames."""
+        return self.frame.n_acquisition 
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the volume."""
+        return self.frame.shape[:2]
+    
+    def _get_kspace_frame(
+        self, idx: int, shot_dim: bool = False
+         ) -> tuple[NDArray[np.float32], NDArray[np.complex64]]:
+        """Get the k-space frame."""
+        n_acq_per_frame = self.frame.n_acquisition // self.frame.n_frames
+        traj, data = self.frame.get_kspace_frame(idx // self.frame.n_shots)
+        traj =  traj.reshape(n_acq_per_frame, -1, 3)
+        data = data.reshape(self.frame.n_coils, n_acq_per_frame, -1)
+
+        return traj[idx%self.frame.n_shots,:,:2], data[:,idx%self.frame.n_shots,:]
+    
 class CartesianFrameDataLoader(MRDLoader):
     """Load cartesian MRD files k-space frames iteratively.
 

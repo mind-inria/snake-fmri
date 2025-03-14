@@ -14,6 +14,7 @@ from snake.mrd_utils import (
     CartesianFrameDataLoader,
     MRDLoader,
     NonCartesianFrameDataLoader,
+    SliceDataloader,
 )
 from snake.core.parallel import (
     ArrayProps,
@@ -83,12 +84,13 @@ class ZeroFilledReconstructor(BaseReconstructor):
     ) -> NDArray:
         """Reconstruct data with zero-filled method."""
         with data_loader:
-            if isinstance(data_loader, CartesianFrameDataLoader):
-                return self._reconstruct_cartesian(data_loader)
-            elif isinstance(data_loader, NonCartesianFrameDataLoader):
-                return self._reconstruct_nufft(data_loader)
+            if isinstance(data_loader, SliceDataloader):
+                reconstruct_method = self._reconstruct_nufft if data_loader.is_non_cartesian else self._reconstruct_cartesian
+            elif isinstance(data_loader, CartesianFrameDataLoader | NonCartesianFrameDataLoader):
+                reconstruct_method = self._reconstruct_cartesian if isinstance(data_loader, CartesianFrameDataLoader) else self._reconstruct_nufft
             else:
                 raise ValueError("Unknown dataloader")
+            return reconstruct_method(data_loader)
 
     def _reconstruct_cartesian(
         self,
@@ -144,19 +146,19 @@ class ZeroFilledReconstructor(BaseReconstructor):
         final_images = np.empty(
             (data_loader.n_frames, *data_loader.shape), dtype=np.float32
         )
+        smaps = data_loader.get_smaps()
 
         for i in tqdm(range(data_loader.n_frames)):
             traj, data = data_loader.get_kspace_frame(i)
-            if data_loader.slice_2d:
-                nufft_operator.samples = traj.reshape(
-                    data_loader.n_shots, -1, traj.shape[-1]
-                )[0, :, :2]
-                data = np.reshape(data, (data.shape[0], data_loader.n_shots, -1))
-                for j in range(data.shape[1]):
-                    final_images[i, :, :, j] = abs(nufft_operator.adj_op(data[:, j]))
-            else:
-                nufft_operator.samples = traj
-                final_images[i] = abs(nufft_operator.adj_op(data))
+            #fix: density compensation should update every frame when rotating(writer: dyn_traj?)
+            if smaps is not None and data_loader.slice_2d:
+                nufft_operator.smaps = smaps[...,i % data_loader.frame.n_shots]
+            nufft_operator.samples = traj
+            final_images[i] = abs(nufft_operator.adj_op(data))
+        if data_loader.slice_2d:
+            final_images = np.moveaxis(final_images.reshape(
+                (data_loader.frame.n_frames, -1, *final_images.shape[-2:])
+            ), 1, -1)
         return final_images
 
 
@@ -271,7 +273,7 @@ class SequentialReconstructor(BaseReconstructor):
             samples=traj,
             shape=data_loader.shape,
             n_coils=data_loader.n_coils,
-            smaps=smaps,
+            smaps=smaps.squeeze() if data_loader.slice_2d else smaps,
             # smaps=xp.array(smaps) if smaps is not None else None,
             density=density_compensation,
             squeeze_dims=True,
@@ -331,6 +333,10 @@ class SequentialReconstructor(BaseReconstructor):
 
             pbar_frames.update(1)
         if self.restart_strategy != RestartStrategy.REFINE:
+            if data_loader.slice_2d:
+                final_estimate = np.moveaxis(final_estimate.reshape(
+                    (data_loader.frame.n_frames, -1, *final_estimate.shape[-2:])
+                ), 1, -1)
             return final_estimate
         # else, we do a second pass on the data using the last iteration as a slotion.
         pbar_frames.reset()
@@ -353,6 +359,10 @@ class SequentialReconstructor(BaseReconstructor):
             else:
                 final_estimate[i, ...] = abs(x_iter)
             pbar_frames.update(1)
+        if data_loader.slice_2d:
+            final_estimate = np.moveaxis(final_estimate.reshape(
+                (data_loader.frame.n_frames, -1, *final_estimate.shape[-2:])
+            ), 1, -1) 
         return final_estimate
 
     def _reconstruct_frame(
@@ -373,7 +383,7 @@ class SequentialReconstructor(BaseReconstructor):
             grad_op=grad_op,
             linear_op=copy.deepcopy(self.space_linear_op),
             prox_op=copy.deepcopy(self.space_prox_op),
-            x_init=x_init,
+            x_init=x_init.get(),
             synthesis_init=False,
             metric_kwargs={},
             compute_backend=self.compute_backend,
