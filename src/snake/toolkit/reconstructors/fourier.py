@@ -64,7 +64,7 @@ def init_nufft(
     kwargs = dict(
         shape=shape,
         n_coils=data_loader.n_coils,
-        smaps=smaps.squeeze() if data_loader.slice_2d else smaps,
+        smaps=smaps[...,0].copy()  if data_loader.slice_2d else smaps,
     )
     if density_compensation is False:
         kwargs["density"] = None

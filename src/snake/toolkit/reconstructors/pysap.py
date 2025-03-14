@@ -155,7 +155,7 @@ class ZeroFilledReconstructor(BaseReconstructor):
                 nufft_operator.smaps = smaps[...,i % data_loader.frame.n_shots]
             nufft_operator.samples = traj
             final_images[i] = abs(nufft_operator.adj_op(data))
-        if data_loader.slice_2d:
+        if isinstance(data_loader, SliceDataloader):
             final_images = np.moveaxis(final_images.reshape(
                 (data_loader.frame.n_frames, -1, *final_images.shape[-2:])
             ), 1, -1)
@@ -273,7 +273,7 @@ class SequentialReconstructor(BaseReconstructor):
             samples=traj,
             shape=data_loader.shape,
             n_coils=data_loader.n_coils,
-            smaps=smaps.squeeze() if data_loader.slice_2d else smaps,
+            smaps=smaps[..., 0].copy() if data_loader.slice_2d else smaps,
             # smaps=xp.array(smaps) if smaps is not None else None,
             density=density_compensation,
             squeeze_dims=True,
@@ -333,7 +333,7 @@ class SequentialReconstructor(BaseReconstructor):
 
             pbar_frames.update(1)
         if self.restart_strategy != RestartStrategy.REFINE:
-            if data_loader.slice_2d:
+            if isinstance(data_loader, SliceDataloader):
                 final_estimate = np.moveaxis(final_estimate.reshape(
                     (data_loader.frame.n_frames, -1, *final_estimate.shape[-2:])
                 ), 1, -1)
@@ -359,7 +359,7 @@ class SequentialReconstructor(BaseReconstructor):
             else:
                 final_estimate[i, ...] = abs(x_iter)
             pbar_frames.update(1)
-        if data_loader.slice_2d:
+        if isinstance(data_loader, SliceDataloader):
             final_estimate = np.moveaxis(final_estimate.reshape(
                 (data_loader.frame.n_frames, -1, *final_estimate.shape[-2:])
             ), 1, -1) 
@@ -383,7 +383,7 @@ class SequentialReconstructor(BaseReconstructor):
             grad_op=grad_op,
             linear_op=copy.deepcopy(self.space_linear_op),
             prox_op=copy.deepcopy(self.space_prox_op),
-            x_init=x_init.get(),
+            x_init=x_init,
             synthesis_init=False,
             metric_kwargs={},
             compute_backend=self.compute_backend,
