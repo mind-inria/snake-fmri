@@ -12,8 +12,11 @@ from numpy.typing import NDArray
 from snake._meta import ThreeInts
 
 from .parallel import run_parallel
+from ._utils import DuplicateFilter
 
 log = logging.getLogger(__name__)
+
+dup_filter = DuplicateFilter(log)
 
 
 def effective_affine(old: NDArray, new: NDArray) -> NDArray:
@@ -61,8 +64,8 @@ def _validate_gpu_affine(use_gpu: bool = True) -> tuple[bool, Callable, ModuleTy
             use_gpu = False
     if not use_gpu:
         import numpy as xp
-
-        log.warning("Cupy not available, using CPU.")
+        with dup_filter:
+            log.warning("Cupy not available, using CPU.")
         from scipy.ndimage import affine_transform
     return use_gpu, affine_transform, xp
 
