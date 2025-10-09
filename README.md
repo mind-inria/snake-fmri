@@ -46,6 +46,6 @@ pip install -e .[test,dev,doc,toolkit]
 
 ## Getting Started
 
-Documentation is available at https://paquiteau.github.io/snake-fmri
+Documentation is available at https://mind-inria.github.io/snake-fmri/
 
 To get started, you can check the examples gallery: https://paquiteau/github.io/snake-fmri/examples
