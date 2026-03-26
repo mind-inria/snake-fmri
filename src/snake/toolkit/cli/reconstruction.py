@@ -81,7 +81,7 @@ def reconstruction(cfg: DictConfig) -> None:
             raise ValueError("No dynamic data found matching waveform name")
 
         bold_signal = good_d.data[0]
-        bold_sample_time = np.arange(len(bold_signal)) * local_sim_conf.seq.TR / 1000
+        bold_sample_time = np.arange(len(bold_signal)) * sim_conf.seq.TR / 1000
         del phantom
         del dyn_datas
     gc.collect()

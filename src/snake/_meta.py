@@ -18,7 +18,7 @@ from typing_extensions import dataclass_transform
 T = TypeVar("T")
 
 ThreeInts = tuple[int, int, int]
-ThreeFloats = tuple[float, float, float]
+ThreeFloats = tuple[float, float, float] | list[float]
 
 
 def make_log_property(dunder_name: str) -> Callable:
@@ -118,7 +118,7 @@ class MetaDCRegister(type):
         class_dict["log"] = property(make_log_property(meta.dunder_name))
         class_dict["_repr_html_"] = dataclass_repr_html
         cls = dataclasses.dataclass(kw_only=True)(
-            super().__new__(meta, clsname, bases, class_dict)  # type: ignore
+            super().__new__(meta, clsname, bases, class_dict)
         )
 
         name_lookup = f"__{meta.dunder_name}_name__"
@@ -142,10 +142,10 @@ class LogMixin:
 class NoCaseEnumMeta(EnumMeta):
     """Make Enum case insensitive."""
 
-    def __getitem__(cls, item: Any):
-        if isinstance(item, str):
-            item = item.upper()
-        return super().__getitem__(item)
+    def __getitem__(cls, name: Any):
+        if isinstance(name, str):
+            name = name.upper()
+        return super().__getitem__(name)
 
 
 class NoCaseEnum(Enum, metaclass=EnumMeta):
@@ -177,8 +177,8 @@ class MethodRegister:
 
         def decorator(func: Callable[..., T], method_name: str) -> Callable[..., T]:
             self.registry[self.register_name][method_name] = func
-            if func.__name__ != method_name:
-                func.__name__ += "__" + method_name
+            if func.__name__ != method_name:  # type: ignore
+                func.__name__ += "__" + method_name  # type: ignore
 
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -189,7 +189,7 @@ class MethodRegister:
         # allow for direct name.
         if callable(method_name):
             func = method_name
-            method_name = func.__name__
+            method_name = func.__name__  # type: ignore
             return decorator(func, method_name)
         else:
             return partial(decorator, method_name=method_name)

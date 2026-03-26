@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from mpl_toolkits.axes_grid1.axes_divider import Size, make_axes_locatable
 from skimage.measure import find_contours
-from matplotlib.cm import ScalarMappable, _colormaps
+from matplotlib.cm import ScalarMappable
 
 
 def get_coolgraywarm(thresh: float = 3, max: float = 7) -> matplotlib.colorbar.Colorbar:
@@ -34,7 +34,7 @@ def _get_axis_properties(
 ) -> tuple[
     NDArray,
     NDArray,
-    tuple[tuple[slice, slice], ...],
+    list[tuple[slice, ...]],
     tuple[tuple[Any, Any, Any], ...],
 ]:
     """Generate mplt toolkit axes dividers for a 3D array.
@@ -91,13 +91,13 @@ def _get_axis_properties(
             bbox[i] = (slice(0, cut.shape[0]), slice(0, cut.shape[1]))
     hdiv, vdiv = _get_hdiv_vdiv(array_bg, bbox, slices, width_inches, cbar=cbar)
 
-    return hdiv, vdiv, tuple(bbox), slices
+    return hdiv, vdiv, bbox, slices
 
 
 def _get_hdiv_vdiv(
     array_bg: NDArray,
-    bbox: tuple[tuple[slice]],
-    slices: tuple[slice],
+    bbox: list[tuple[slice, ...]],
+    slices: tuple[tuple[slice | int, ...], ...],
     width_inches: float,
     cbar: bool = False,
 ) -> tuple[NDArray, NDArray]:
@@ -118,19 +118,11 @@ def _get_hdiv_vdiv(
     aspect = update_sizes[0][0] / (update_sizes[0][1] + update_sizes[1][1])
     split_lr = update_sizes[0][1] / (update_sizes[1][1] + update_sizes[0][1])
     split_tb = update_sizes[1][0] / (update_sizes[1][0] + update_sizes[2][0])
-    hdiv = [
-        width_inches * split_lr,
-        width_inches * (1 - split_lr),
-    ]
+    hdiv = [width_inches * split_lr, width_inches * (1 - split_lr)]
 
     if cbar:
-        hdiv.extend(
-            [
-                0.02 * hdiv[0],
-                0.02 * hdiv[0],
-            ]
-        )
-    np.array(hdiv)
+        hdiv.extend([0.02 * hdiv[0], 0.02 * hdiv[0]])
+    hdiv = np.array(hdiv)
     height_inches = width_inches * aspect
     vdiv = np.array([height_inches * split_tb, height_inches * (1 - split_tb)])
     return hdiv, vdiv
@@ -146,8 +138,8 @@ def get_mask_cuts_mask(mask: NDArray) -> tuple[int, ...]:
 
 def plot_frames_activ(
     background: NDArray,
-    z_score: NDArray,
-    rois: list[NDArray] | None,
+    z_score: NDArray | None,
+    rois: list[NDArray] | NDArray | None,
     ax: plt.Axes,
     slices: tuple[Any, ...],
     bbox: tuple[Any, ...],
@@ -195,7 +187,7 @@ def plot_frames_activ(
     if rois is not None:
         if roi_colors is None:
             roi_colors = ["r", "g", "b", "y"][: len(rois)]
-        for roi, color in zip(rois, roi_colors):
+        for roi, color in zip(rois, roi_colors, strict=False):
             roi_cut = roi[slices][bbox].squeeze()
             contours = find_contours(roi_cut)
             for c in contours:
@@ -208,20 +200,20 @@ def plot_frames_activ(
 def axis3dcut(
     background: NDArray[np.float32],
     z_score: NDArray[np.float32] | None,
-    gt_roi: NDArray | None = None,
+    gt_roi: NDArray | list[NDArray] | None = None,
     width_inches: float = 7,
     cbar: bool = True,
-    cuts: tuple[int, ...] | tuple[float, ...] | None = None,
-    bbox: tuple[tuple[Any, Any], ...] | None = None,
+    cuts: tuple[int | float, ...] | None = None,
+    bbox: list[tuple[slice, ...]] | None = None,
     slices: tuple[tuple[Any, Any, Any], ...] | None = None,
     bg_cmap: str = "gray",
     ax: plt.Axes | None = None,
-    vmin_vmax: tuple[float] = None,
+    vmin_vmax: tuple[float, float] | None = None,
     z_thresh: float = 3,
     z_max: float = 11,
     tight_crop: bool = False,
     roi_colors: list[str] | None = None,
-) -> tuple[plt.Figure, plt.Axes, tuple[int, ...]]:
+) -> tuple[plt.Figure, plt.Axes, tuple[int | float, ...]]:
     """Display a 3D image with zscore and ground truth ROI.
 
     This function is used to display a 3D brain image with optional overlay for
@@ -282,13 +274,13 @@ def axis3dcut(
         cuts_ = cuts
         gt_roi_ = None
 
-    if all(isinstance(c, float) and 0 < c < 1 for c in cuts_):
-        cuts_ = tuple(round(c * background.shape[i]) for i, c in enumerate(cuts_))
+    if all(isinstance(c, float) for c in cuts_):
+        cuts_ = tuple(int(round(c * background.shape[i])) for i, c in enumerate(cuts_))
 
     if bbox is None and slices is None:
         hdiv, vdiv, bbox_, slices_ = _get_axis_properties(
             background,
-            cuts_,
+            cuts_,  # type: ignore
             width_inches,
             cbar=cbar,
             tight_crop=tight_crop,
@@ -305,21 +297,20 @@ def axis3dcut(
     else:
         # TODO Use the correct figure size
         fig, ax = plt.subplots(figsize=(width_inches, width_inches))
-
+    if not isinstance(fig, plt.Figure):
+        raise ValueError("Could not get figure from axes.")
     divider = make_axes_locatable(ax)
     divider.set_horizontal([Size.Fixed(s) for s in hdiv])
     divider.set_vertical([Size.Fixed(s) for s in vdiv])
-    axG: list[plt.Axes] = [None, None, None]
     for i, (nx, ny, ny1) in enumerate([(0, 0, 2), (1, 0, 1), (1, 1, 2)]):
-        axG[i] = plt.Axes(fig, ax.get_position(original=True))
-        axG[i].set_axes_locator(divider.new_locator(nx=nx, ny=ny, ny1=ny1))
-        fig.add_axes(axG[i])
-    for i in range(3):
+        axG = plt.Axes(fig, ax.get_position(original=True))
+        axG.set_axes_locator(divider.new_locator(nx=nx, ny=ny, ny1=ny1))
+        fig.add_axes(axG)
         plot_frames_activ(
             background,
             z_score,
             gt_roi_,
-            axG[i],
+            axG,
             slices_[i],
             bbox_[i],
             bg_cmap=bg_cmap,
@@ -332,7 +323,7 @@ def axis3dcut(
         cax = type(ax)(fig, ax.get_position(original=True))
         cax.set_axes_locator(divider.new_locator(nx=3, ny=0, ny1=-1))
         if z_score is not None:
-            im = ScalarMappable(norm="linear", cmap=get_coolgraywarm())
+            im = ScalarMappable(norm="linear", cmap=get_coolgraywarm())  # type: ignore
             im.set_clim(-z_max, z_max)
             matplotlib.colorbar.Colorbar(cax, im, orientation="vertical")
             cax.set_ylabel("z-scores", labelpad=-20)
@@ -350,8 +341,8 @@ def axis3dcut(
                 vmin, vmax = (np.min(background), np.max(background))
             else:
                 vmin, vmax = vmin_vmax
-            im = ScalarMappable(norm="linear", cmap=bg_cmap)
-            im.set_clim(vmin=vmin, vmax=vmax)
+            im = ScalarMappable(norm="linear", cmap=bg_cmap)  # type: ignore
+            im.set_clim(vmin=float(vmin), vmax=float(vmax))
             matplotlib.colorbar.Colorbar(cax, im, orientation="vertical")
         fig.add_axes(cax)
 

@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 def acquisition(cfg: ConfigSNAKE) -> None:
     """Simulate acquisition."""
-    cfg = OmegaConf.to_object(cfg)
+    cfg = OmegaConf.to_object(cfg)  # type: ignore
     # FIXME: Hydra should be able to do that on its own.
     print(cfg)
     sim_conf = cfg.sim_conf
@@ -55,7 +55,7 @@ def acquisition(cfg: ConfigSNAKE) -> None:
         model=cfg.engine.model,
         snr=cfg.engine.snr,
         slice_2d=cfg.engine.slice_2d,
-    )  # type: ignore
+    )
 
     engine(
         cfg.filename,

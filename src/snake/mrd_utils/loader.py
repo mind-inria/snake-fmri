@@ -10,7 +10,8 @@ import ismrmrd as mrd
 import h5py
 import numpy as np
 from numpy.typing import NDArray
-from typing import Any, TYPE_CHECKING, overload
+from typing import Any, TYPE_CHECKING
+from pathlib import Path
 from collections.abc import Generator
 from .._meta import LogMixin
 
@@ -22,7 +23,7 @@ from .utils import b64encode2obj
 
 log = logging.getLogger(__name__)
 
-GenericPath = os.PathLike | str
+GenericPath = os.PathLike | Path | str
 
 
 def read_mrd_header(filename: GenericPath | mrd.Dataset) -> mrd.xsd.ismrmrdHeader:
@@ -134,11 +135,10 @@ class MRDLoader(LogMixin):
             for i in np.arange(start, stop, step):
                 yield i, *self.get_kspace_frame(i, shot_dim=shot_dim)
 
-    @overload
     def get_kspace_frame(
         self, idx: int
     ) -> tuple[NDArray[np.float32], NDArray[np.complex64]]:
-        # Get k-space frame trajectory/mask and data.
+        """Get k-space frame trajectory/mask and data."""
         raise NotImplementedError()
 
     ###########################

@@ -1,7 +1,6 @@
 """Acquisition engine for Cartesian trajectories."""
 
 from collections.abc import Sequence
-
 import ismrmrd as mrd
 import numpy as np
 from numpy.typing import NDArray
@@ -36,7 +35,7 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
         hdr: mrd.xsd.ismrmrdHeader,
         sim_conf: SimConfig,
         chunk: int | Sequence[int],
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Generate the fourier operator by iterating the dataset."""
         if not isinstance(chunk, Sequence):
             chunk = [chunk]
@@ -63,7 +62,7 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
         sim_conf: SimConfig,
         trajectories: NDArray,  # (Chunksize, N, 3)
         slice_2d: bool = False,
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Acquire k-space data. With T2s decay."""
         readout_length = trajectories.shape[-2]
         n_lines_epi = trajectories.shape[-3]
@@ -136,7 +135,7 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
         sim_conf: SimConfig,
         trajectories: NDArray,  # (Chunksize, N, 3)
         slice_2d: bool = False,
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Acquire k-space data. No T2s decay."""
         final_ksp = np.zeros(
             (

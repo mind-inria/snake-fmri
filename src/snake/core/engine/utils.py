@@ -15,7 +15,7 @@ def get_phantom_state(
     i: int,
     sim_conf: SimConfig,
     aggregate: bool = True,
-) -> [NDArray, NDArray]:
+) -> tuple[NDArray, NDArray | None]:
     """Get phantom state after applying all temporal variation."""
     frame_phantom = deepcopy(phantom)
     for dyn_data in dyn_datas:

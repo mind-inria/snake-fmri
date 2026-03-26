@@ -43,7 +43,7 @@ def _validate_gpu_affine(use_gpu: bool = True) -> tuple[bool, Callable, ModuleTy
                 x: NDArray,
                 *args: Any,
                 output_shape: ThreeInts,
-                output: NDArray[np.float32] = None,
+                output: NDArray[np.float32] | None = None,
                 **kwargs: Any,
             ) -> NDArray:
                 output_gpu = xp.zeros(output_shape, dtype=x.dtype)
@@ -58,12 +58,13 @@ def _validate_gpu_affine(use_gpu: bool = True) -> tuple[bool, Callable, ModuleTy
                 if output is not None:
                     xp.copyto(output, output_gpu)
                     return output
-                else:
-                    return output_gpu.get()
+                return output_gpu.get()  # type: ignore
+
         except ImportError:
             use_gpu = False
     if not use_gpu:
         import numpy as xp
+
         with dup_filter:
             log.warning("Cupy not available, using CPU.")
         from scipy.ndimage import affine_transform
@@ -75,10 +76,10 @@ def apply_affine(
     old_affine: NDArray[np.float32],
     new_affine: NDArray[np.float32],
     new_shape: ThreeInts,
-    output: NDArray[np.float32] = None,
-    transform_affine: NDArray[np.float32] = None,
+    output: NDArray[np.float32] | None = None,
+    transform_affine: NDArray[np.float32] | None = None,
     use_gpu: bool = True,
-    mode="nearest",
+    mode: str = "nearest",
     **kwargs: Any,
 ) -> NDArray[np.float32]:
     """Apply the new affine on the data.

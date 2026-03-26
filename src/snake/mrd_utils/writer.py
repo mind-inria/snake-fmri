@@ -1,6 +1,7 @@
 """Export data to mrd format."""
 
 from __future__ import annotations
+from snake.core.engine.base import GenericPath
 
 import logging
 import os
@@ -177,7 +178,7 @@ def add_coil_cov_mrd(
 
 
 def make_base_mrd(
-    filename: os.PathLike,
+    filename: GenericPath,
     sampler: BaseSampler,
     phantom: Phantom,
     sim_conf: SimConfig,

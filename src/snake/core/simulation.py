@@ -37,9 +37,8 @@ class GreConfig:
         if self.TR < 0 or self.TE < 0:
             raise ValueError("TR and TE must be positive.")
 
-        self.TR_eff = (
-            self.TR
-        )  # To be updated if needed. this will be used for the contrast calculation
+        # To be updated if needed. this will be used for the contrast calculation
+        self.TR_eff = self.TR
 
 
 @dataclass

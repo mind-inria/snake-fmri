@@ -238,19 +238,21 @@ class StackOfSpiralSampler(NonCartesianAcquisitionSampler):
     Parameters
     ----------
     acsz: float | int
-        Number/ proportion of lines to be acquired in the center of k-space.
+        Number/ proportion of lines to be fully-sampled in the center of k-space.
     accelz: int
         Acceleration factor for the rest of the lines.
     directionz: Literal["center-out", "random"]
         Direction of the acquisition. Either "center-out" or "random".
     pdfz: Literal["gaussian", "uniform"]
-        Probability density function of the sampling. Either "gaussian" or "uniform".
+        Probability density function for the sampled slice locations. Either
+        "gaussian" or "uniform".
     obs_ms: int
         Time spent to acquire a single shot
     nb_revolutions: int
         Number of revolutions of the spiral.
     in_out: bool
-        If true, the spiral is acquired with a double join pattern from/to the periphery
+        If true, the spiral is acquired with a double join pattern from/to the
+        periphery
     **kwargs:
         Extra arguments (smaps, n_jobs, backend etc...)
     """

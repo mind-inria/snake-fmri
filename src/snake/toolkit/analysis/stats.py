@@ -8,8 +8,6 @@ import numpy as np
 
 from nilearn.glm.first_level import make_first_level_design_matrix, run_glm
 from nilearn.glm import compute_contrast, expression_to_contrast_vector
-from nilearn.glm.thresholding import fdr_threshold
-from scipy.stats import norm
 from scipy.interpolate import interp1d
 
 logger = logging.getLogger(__name__)

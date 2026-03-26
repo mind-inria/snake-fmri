@@ -17,7 +17,7 @@ from mrinufft.trajectories.utils import (
     check_hardware_constraints,
     compute_gradients_and_slew_rates,
 )
-from scipy.stats import norm  # type: ignore
+from scipy.stats import norm
 
 from ..._meta import NoCaseEnum
 
@@ -84,7 +84,7 @@ def get_kspace_slice_loc(
     order = VDSorder(order)
     pdf = VDSpdf(pdf)
     if accel == 0:
-        return np.arange(dim_size)  # type: ignore
+        return np.arange(dim_size)
 
     indexes = list(range(dim_size))
 

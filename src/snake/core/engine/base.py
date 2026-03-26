@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from multiprocessing.managers import SharedMemoryManager
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, ClassVar, overload
+from typing import Any, ClassVar
 
 
 import ismrmrd as mrd
@@ -31,7 +31,7 @@ from ..sampling import BaseSampler
 from ..simulation import SimConfig
 from .utils import get_noise
 
-GenericPath = Path | str
+GenericPath = Path | str | os.PathLike
 
 
 @dataclass_transform(kw_only_default=True)
@@ -71,13 +71,12 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
     ) -> Sequence[int]:
         return range(data_loader.n_acquisition)
 
-    @overload
     def _job_trajectories(
         self,
-        dataset: mrd.Dataset,
+        data_loader: MRDLoader,
         hdr: mrd.xsd.ismrmrdHeader,
         sim_conf: SimConfig,
-        chunk: Sequence[int],
+        chunk: int | Sequence[int],
     ) -> NDArray:
         raise NotImplementedError
 
@@ -91,7 +90,6 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         t = dwell_time_ms * (np.arange(n_samples, dtype=np.float32) - echo_idx)
         return np.exp(-t[None, :] / phantom.props[:, PropTissueEnum.T2s, None])
 
-    @overload
     @staticmethod
     def _job_model_T2s(
         phantom: Phantom,
@@ -103,7 +101,6 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
     ) -> NDArray:
         raise NotImplementedError
 
-    @overload
     @staticmethod
     def _job_model_simple(
         phantom: Phantom,
@@ -115,9 +112,8 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
     ) -> NDArray:
         raise NotImplementedError
 
-    @overload
     def _write_chunk_data(
-        self, dataset: mrd.Dataset, chunk: Sequence[int], chunk_data: NDArray
+        self, data_loader: MRDLoader, chunk: Sequence[int], chunk_data: NDArray
     ) -> None:
         raise NotImplementedError
 
@@ -127,7 +123,8 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         chunk: Sequence[int],
         tmp_dir: str,
         shared_phantom_props: (
-            tuple[str, ArrayProps, ArrayProps, ArrayProps, ArrayProps | None] | None
+            tuple[str, ArrayProps, ArrayProps, ArrayProps, ArrayProps, ArrayProps]
+            | None
         ) = None,
         **kwargs: Mapping[str, Any],
     ) -> str:
@@ -216,10 +213,10 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         and `_job_model_simple`.
         """
         if self.slice_2d:  # Update the correct TR_eff
-            sim_conf.TR_eff = sampler.TR_vol_ms
+            sim_conf.seq.TR_eff = sampler.TR_vol_ms
             self.log.warning("Using 2D acquisition, the TR_eff is updated to TR_vol")
         else:
-            sim_conf.TR_eff = sim_conf.seq.TR
+            sim_conf.seq.TR_eff = sim_conf.seq.TR
 
         if handlers is None:
             handlers = []
@@ -272,7 +269,6 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
 
         del ideal_phantom
 
-
         # Reduce the number of workers if the number of chunks is smaller
         # than the number of workers
         n_workers = min(n_workers, len(chunk_list))
@@ -313,7 +309,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
                     chunk_id,
                     tmp_dir=tmp_chunk_dir,
                     shared_phantom_props=phantom_props,
-                    slice_2d=self.slice_2d,
+                    slice_2d=self.slice_2d,  # type: ignore
                     **kwargs,
                 ): chunk_id
                 for chunk_id in chunk_list

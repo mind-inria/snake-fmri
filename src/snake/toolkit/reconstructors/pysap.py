@@ -79,7 +79,7 @@ class ZeroFilledReconstructor(BaseReconstructor):
     def reconstruct(
         self,
         data_loader: MRDLoader,
-        sim_conf: SimConfig = None,
+        sim_conf: SimConfig | None = None,
     ) -> NDArray:
         """Reconstruct data with zero-filled method."""
         with data_loader:
@@ -196,7 +196,9 @@ class SequentialReconstructor(BaseReconstructor):
         """Return a string representation of the reconstructor."""
         return f"{self.__reconstructor_name__}-{self.restart_strategy}"
 
-    def setup(self, sim_conf: SimConfig = None, shape: tuple[int] = None) -> None:
+    def setup(
+        self, sim_conf: SimConfig | None = None, shape: tuple[int, ...] | None = None
+    ) -> None:
         """Set up the reconstructor."""
         from fmri.operators.weighted import AutoWeightedSparseThreshold
         from modopt.opt.linear import Identity
@@ -325,7 +327,7 @@ class SequentialReconstructor(BaseReconstructor):
                 else x_init.copy()
             )
             if self.compute_backend == "cupy":
-                final_estimate[i, ...] = abs(x_iter).get()  # type: ignore
+                final_estimate[i, ...] = abs(x_iter).get()
             else:
                 final_estimate[i, ...] = abs(x_iter)
 
@@ -349,7 +351,7 @@ class SequentialReconstructor(BaseReconstructor):
                 progbar=pbar_iter,
             )
             if self.compute_backend == "cupy":
-                final_estimate[i, ...] = abs(x_iter).get()  # type: ignore
+                final_estimate[i, ...] = abs(x_iter).get()
             else:
                 final_estimate[i, ...] = abs(x_iter)
             pbar_frames.update(1)

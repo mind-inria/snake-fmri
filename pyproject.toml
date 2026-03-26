@@ -127,13 +127,16 @@ convention = "numpy"
 "tests/test_*.py" = ["D", "ANN"]
 
 
-[tool.basedpyright]
-
-typeCheckingMode = "off"
 
 [tool.codespell]
 ignore-words-list = ["TE","fpr"]
 skip = ["docs/generated", "*.ipynb"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+no-matching-overload = "ignore"
+possibly-missing-attribute = "ignore"
+
 
 [dependency-groups]
 dev = [
@@ -164,3 +167,18 @@ doc = [
     "sphinx-tippy",
     "linkify-it-py",
     ]
+
+
+
+[tool.uv.sources]
+mri-nufft = { path = "../mri-nufft", editable=true }
+brainweb-dl = {path = "../brainweb-dl", editable=true}
+deepinv = { path = "../deepinv", editable=true}
+pysap-fmri = { path = "../pysap-fmri", editable=true }
+hydra-callbacks = { path = "../hydra-callbacks", editable=true }
+
+
+
+[tool.ty.environment]
+extra-paths = ["../deepinv", "../mri-nufft", "../pysap-fmri", "../hydra-callbacks", "../brainweb-dl"]
+

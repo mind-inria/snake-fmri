@@ -44,7 +44,7 @@ class AbstractHandler(metaclass=MetaHandler):
 
     def to_yaml(self) -> str:
         """Show the yaml config associated with the handler."""
-        return yaml.dump(dataclasses.asdict(self))  # type: ignore
+        return yaml.dump(dataclasses.asdict(self))
 
 
 class HandlerList(UserList):

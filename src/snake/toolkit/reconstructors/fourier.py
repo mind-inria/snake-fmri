@@ -27,7 +27,7 @@ def fft(image: NDArray, axis: int | tuple[int] = -1) -> NDArray:
     )
 
 
-def ifft(kspace_data: NDArray, axis: int | tuple[int] = -1) -> NDArray:
+def ifft(kspace_data: NDArray, axis: int | tuple[int, ...] = -1) -> NDArray:
     """Apply the inverse FFT operator.
 
     Parameters
@@ -51,7 +51,7 @@ def ifft(kspace_data: NDArray, axis: int | tuple[int] = -1) -> NDArray:
 def init_nufft(
     data_loader: NonCartesianFrameDataLoader,
     nufft_backend: str,
-    density_compensation: bool = False,
+    density_compensation: None | bool | str = False,
 ) -> FourierOperatorBase:
     """Initialize the NUFFT operator from the data_loader."""
     from mrinufft import get_operator

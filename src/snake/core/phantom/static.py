@@ -14,7 +14,6 @@ from multiprocessing.managers import SharedMemoryManager
 from multiprocessing.shared_memory import SharedMemory
 from typing import TYPE_CHECKING, Any, Literal
 
-
 if TYPE_CHECKING:
     from _typeshed import GenericPath
     from snake.mrd_utils.loader import MRDLoader
@@ -64,7 +63,7 @@ class Phantom:
     # TODO Add field map inhomogeneity in the phantom
     name: str
     masks: NDArray[np.float32]
-    labels: NDArray[np.string_]
+    labels: NDArray[np.str_]
     props: NDArray[np.float32]
     smaps: NDArray[np.complex64] | None = None
     affine: NDArray[np.float32] = field(
@@ -97,13 +96,16 @@ class Phantom:
         return {label: i for i, label in enumerate(self.labels)}
 
     def make_smaps(
-        self, n_coils: int = None, sim_conf: SimConfig = None, antenna: str = "birdcage"
+        self,
+        n_coils: int | None = None,
+        sim_conf: SimConfig | None = None,
+        antenna: str = "birdcage",
     ) -> None:
         """Get coil sensitivity maps for the phantom."""
-        if n_coils is None and sim_conf is not None:
+        if n_coils is None:
+            if sim_conf is None:
+                raise ValueError("Either n_coils or sim_conf must be provided.")
             n_coils = sim_conf.hardware.n_coils
-        elif sim_conf is None and n_coils is None:
-            raise ValueError("Either n_coils or sim_conf must be provided.")
         if n_coils == 1:
             log.warning("Only one coil, no need for smaps.")
         elif n_coils > 1 and self.smaps is None:
@@ -261,7 +263,7 @@ class Phantom:
 
     @classmethod
     def from_mrd_dataset(
-        cls, dataset: MRDLoader | os.PathLike, imnum: int = 0
+        cls, dataset: MRDLoader | os.PathLike | str, imnum: int = 0
     ) -> Phantom:
         """Load the phantom from a mrd dataset."""
         from snake.mrd_utils.loader import get_affine_from_image, MRDLoader
@@ -316,7 +318,7 @@ class Phantom:
         slice_dir = self.affine[:3, 2] / res_mm[2]
         slice_dir = (-slice_dir[0], -slice_dir[1], slice_dir[2])
 
-        fov_mm = tuple(np.float32(np.array(self.anat_shape) * res_mm))
+        fov_mm = tuple(np.array(self.anat_shape).astype(np.float32) * res_mm)
 
         # Add the phantom data
         dataset.append_image(
@@ -374,9 +376,7 @@ class Phantom:
         ) as arrs:
             yield cls(name, *arrs)
 
-    def in_shared_memory(
-        self, manager: SharedMemoryManager
-    ) -> tuple[
+    def in_shared_memory(self, manager: SharedMemoryManager) -> tuple[
         tuple[str, ArrayProps, ArrayProps, ArrayProps, ArrayProps | None, ArrayProps],
         tuple[
             SharedMemory, SharedMemory, SharedMemory, SharedMemory | None, SharedMemory
@@ -419,22 +419,22 @@ class Phantom:
         mask_nifti = self.masks2nifti()
         smaps_nifti = None
         smaps_filename = None
+
         if self.smaps is not None:
             smaps_nifti = self.smaps2nifti()
             smaps_filename = Path(str(filename).replace(".nii", "_smaps.nii"))
+            smaps_nifti.to_filename(smaps_filename)
         if not filename:
             return filename, smaps_nifti
         mask_nifti.to_filename(filename)
-        if self.smaps is not None:
-            smaps_nifti.to_filename(smaps_filename)
         return filename, smaps_filename
 
     @classmethod
     def from_nifti(
         cls,
         mask_nifti: Nifti1Image | GenericPath,
-        props: NDArray[np.float32] = None,
-        labels: NDArray[np.string_] = None,
+        props: NDArray[np.float32] | None = None,
+        labels: NDArray[np.str_] | None = None,
         smaps: Nifti1Image | GenericPath | None = None,
     ) -> Phantom:
         """Create a phantom from nifti files."""
@@ -454,10 +454,10 @@ class Phantom:
             labels = mask_nifti.extra["labels"]
         masks = np.asarray(mask_nifti.get_fdata()).astype(np.float32)
         smaps = None
-        if smaps_nifti:
+        if isinstance(smaps_nifti, Nifti1Image):
             smaps = np.asarray(smaps_nifti.get_fdata()).astype(np.complex64)
         return cls(
-            name=mask_nifti_name,
+            name=str(mask_nifti_name),
             masks=masks,
             labels=labels,
             props=props,
@@ -503,12 +503,14 @@ class Phantom:
             shape = sim_conf.fov.shape
             self = self.resample(affine, shape, use_gpu=use_gpu)
 
-        if sim_conf is not None:
-            TR = sim_conf.seq.TR_eff  # Here we use the effective TR.
-            TE = sim_conf.seq.TE
-            FA = sim_conf.seq.FA
-        if sim_conf is None and TR is None and TE is None and FA is None:
-            raise ValueError("Missing either sim_conf or TR,TE,FA")
+        if TR is None or TE is None or FA is None:
+            if sim_conf is not None:
+                TR = sim_conf.seq.TR_eff  # Here we use the effective TR.
+                TE = sim_conf.seq.TE
+                FA = sim_conf.seq.FA
+            else:
+                raise ValueError("Missing either sim_conf or TR,TE,FA")
+
         if sequence.upper() == "GRE":
             contrasts = _contrast_gre(self.props, TR=TR, TE=TE, FA=FA)
         else:

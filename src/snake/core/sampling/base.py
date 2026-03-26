@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import logging
-from typing import ClassVar, overload
+from typing import ClassVar
 from typing_extensions import dataclass_transform
 from numpy.typing import NDArray
 
@@ -38,7 +38,6 @@ class BaseSampler(metaclass=MetaSampler):
         """Get a logger."""
         return logging.getLogger(f"simulation.samplers.{self.__class__.__name__}")
 
-    @overload
     def _single_frame(self, sim_conf: SimConfig) -> NDArray:
         # Generate a single frame
         raise NotImplementedError
@@ -52,12 +51,10 @@ class BaseSampler(metaclass=MetaSampler):
 
         return self._single_frame(sim_conf)
 
-    @overload
     def add_all_acq_mrd(self, dataset: mrd.Dataset, sim_conf: SimConfig) -> mrd.Dataset:
-        # Export the Sampling pattern to file
+        """Add all the acquisition to the dataset."""
         raise NotImplementedError
 
-    @overload
     def TR_vol_ms(self, sim_conf: SimConfig) -> float:
-        # Get the TR in milliseconds.
+        """Get the TR in milliseconds."""
         raise NotImplementedError
