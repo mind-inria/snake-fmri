@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import functools
 from functools import cached_property
 import ismrmrd as mrd
@@ -11,19 +10,17 @@ import h5py
 import numpy as np
 from numpy.typing import NDArray
 from typing import Any, TYPE_CHECKING
-from pathlib import Path
 from collections.abc import Generator
 from .._meta import LogMixin
 
 if TYPE_CHECKING:
     from ..core import Phantom, DynamicData
     from ..core import SimConfig
+    from _typeshed import GenericPath
 
 from .utils import b64encode2obj
 
 log = logging.getLogger(__name__)
-
-GenericPath = os.PathLike | Path | str
 
 
 def read_mrd_header(filename: GenericPath | mrd.Dataset) -> mrd.xsd.ismrmrdHeader:
@@ -66,6 +63,7 @@ class MRDLoader(LogMixin):
         self._level = 0
         self._file: h5py.File | None = None
         self._squeeze_dims = squeeze_dims
+        self._shape: tuple[int, ...]
 
     def __enter__(self):
         # Track the number of times the dataloader is used as a context manager
@@ -84,7 +82,7 @@ class MRDLoader(LogMixin):
                     "No matrix size found in the header."
                     " The header is probably missing."
                 )
-                self._shape = None
+                self._shape = tuple()
             else:
                 matrixSize = header.encoding[0].encodedSpace.matrixSize
                 self._shape = matrixSize.x, matrixSize.y, matrixSize.z
@@ -136,7 +134,7 @@ class MRDLoader(LogMixin):
                 yield i, *self.get_kspace_frame(i, shot_dim=shot_dim)
 
     def get_kspace_frame(
-        self, idx: int
+        self, idx: int, shot_dim: bool = False
     ) -> tuple[NDArray[np.float32], NDArray[np.complex64]]:
         """Get k-space frame trajectory/mask and data."""
         raise NotImplementedError()
@@ -392,8 +390,18 @@ class CartesianFrameDataLoader(MRDLoader):
             image = ifft(kspace)
     """
 
-    def get_kspace_frame(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
-        """Get the k-space frame."""
+    def get_kspace_frame(
+        self, idx: int, shot_dim: bool = False
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the k-space frame.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the frame to get.
+        shot_dim : bool, optional
+            No Op
+        """
         kspace = np.zeros((self.n_coils, *self.shape), dtype=np.complex64)
         mask = np.zeros(self.shape, dtype=bool)
 
@@ -407,7 +415,7 @@ class CartesianFrameDataLoader(MRDLoader):
         data = data.reshape(-1, self.n_shots, self.n_coils, self.n_sample)
         data = np.moveaxis(data, 2, 0)  # putting the coil dimension first.
         data = data.reshape(self.n_coils, -1)
-        traj_locs: tuple = tuple(np.int32(traj.T))  # type: ignore
+        traj_locs = tuple(np.int32(traj.T))
         for c in range(self.n_coils):
             kspace[c][traj_locs] = data[c]
         mask[traj_locs] = True
@@ -528,7 +536,7 @@ def parse_sim_conf(header: mrd.xsd.ismrmrdHeader) -> SimConfig:
         max_sim_time=parsed.pop("max_sim_time"),
         seq=seq,
         hardware=hardware,
-        rng_seed=parsed.pop("rng_seed"),
+        rng_seed=int(parsed.pop("rng_seed")),
     )
     sim_conf.fov: FOVConfig = eval(parsed_str.pop("fov_config"))
 

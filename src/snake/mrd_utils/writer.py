@@ -1,7 +1,6 @@
 """Export data to mrd format."""
 
 from __future__ import annotations
-from snake.core.engine.base import GenericPath
 
 import logging
 import os
@@ -22,6 +21,7 @@ if TYPE_CHECKING:
     from snake.core.phantom import DynamicData, Phantom
     from snake.core.sampling import BaseSampler
     from snake.core.simulation import SimConfig
+    from _typeshed import GenericPath
 
 log = logging.getLogger(__name__)
 
