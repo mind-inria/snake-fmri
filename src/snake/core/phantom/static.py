@@ -28,7 +28,7 @@ from ..smaps import get_smaps
 from ..parallel import ArrayProps, array_from_shm, array_to_shm, run_parallel
 from ..simulation import SimConfig
 from .contrast import _contrast_gre
-from .utils import PropTissueEnum, TissueFile, resize_tissues
+from .utils import PropTissueEnum, TissueFile, resize_tissues, parse_tissue_file
 from ..transform import apply_affine4d, serialize_array, unserialize_array
 
 log = logging.getLogger(__name__)
@@ -187,33 +187,16 @@ class Phantom:
         tissues_mask = tissues_mask.astype(np.float32)
         affine = affine.astype(np.float32)
         tissues_mask = np.ascontiguousarray(tissues_mask.T)
-        tissues_list = []
-        try:
-            if isinstance(tissue_file, TissueFile):
-                tissue_file = tissue_file.value
-            else:
-                tissue_file = TissueFile[tissue_file].value
-        except ValueError as exc:
-            if not os.path.exists(tissue_file):
-                raise FileNotFoundError(f"File {tissue_file} does not exist.") from exc
-        finally:
-            tissue_file = str(tissue_file)
-        log.info(f"Using tissue file:{tissue_file} ")
-        with open(tissue_file) as f:
-            lines = f.readlines()
-            select = []
-            for line in lines[1:]:
-                vals = line.split(",")
-                t1, t2, t2s, rho, chi = map(np.float32, vals[1:])
-                name = vals[0]
-                t = (name, t1, t2, t2s, rho, chi)
-                if (
-                    (tissue_select and name in tissue_select)
-                    or (tissue_ignore and name not in tissue_ignore)
-                    or (not tissue_select and not tissue_ignore)
-                ):
-                    tissues_list.append(t)
-                    select.append(BrainWebTissuesV2[name.upper()])
+        tissues_list = dict()
+        select = []
+        for name, props in parse_tissue_file(tissue_file).items():
+            if (
+                (tissue_select and name in tissue_select)
+                or (tissue_ignore and name not in tissue_ignore)
+                or (not tissue_select and not tissue_ignore)
+            ):
+                tissues_list[name] = props
+                select.append(BrainWebTissuesV2[name.upper()])
         log.info(
             f"Selected tissues: {select}, {[t[0] for t in tissues_list]}",
         )
@@ -250,8 +233,8 @@ class Phantom:
         phantom = cls(
             f"brainweb-{sub_id:02d}",
             tissues_mask,
-            labels=np.array([t[0] for t in tissues_list]),
-            props=np.array([t[1:] for t in tissues_list]),
+            labels=np.array(tissues_list.keys()),
+            props=np.array(tissues_list.values()),
             smaps=smaps,
             affine=affine,
         )
