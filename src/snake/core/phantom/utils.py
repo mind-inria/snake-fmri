@@ -61,7 +61,6 @@ def parse_tissue_file(
     with open(tissue_file) as f:
 
         lines = f.readlines()
-        select = []
         for line in lines[1:]:
             vals = line.split(",")
             t1, t2, t2s, rho, chi = map(np.float32, vals[1:])

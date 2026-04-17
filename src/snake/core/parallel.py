@@ -1,5 +1,7 @@
 """Utilities for running parallel computations with processes and shared memory."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -9,17 +11,43 @@ from typing import Any, NamedTuple
 
 import numpy as np
 from joblib import Parallel, delayed
+from numpy._typing import _ShapeLike
 from numpy.typing import DTypeLike, NDArray
 
 log = logging.getLogger(__name__)
 
 
-class ArrayProps(NamedTuple):
+class SharedArray(NamedTuple):
     """Properties of an array stored in shared memory."""
 
     name: str
-    shape: tuple[int, ...]
+    shape: _ShapeLike
     dtype: DTypeLike
+
+    @property
+    def nbytes(self) -> int:
+        """Number of bytes needed to store the array."""
+        return int(np.prod(self.shape) * np.dtype(self.dtype).itemsize)
+
+    @contextmanager
+    def as_array(self) -> Generator[NDArray, None, None]:
+        """Get the array from shared memory."""
+        shm = SharedMemory(name=self.name, size=self.nbytes, create=False)
+        yield np.ndarray(shape=self.shape, dtype=self.dtype, buffer=shm.buf)
+        shm.close()
+
+    def to_array(self) -> NDArray:
+        """Copy the array from shared memory, and close the shared memory."""
+        with self.as_array() as arr:
+            return arr.copy()
+
+    @classmethod
+    def from_array(cls, manager: SharedMemoryManager, array: NDArray) -> SharedArray:
+        """Copy an array to shared memory."""
+        shm = manager.SharedMemory(size=array.nbytes)
+        _arr_view = np.ndarray(shape=array.shape, dtype=array.dtype, buffer=shm.buf)
+        _arr_view[:] = array  # copy to shared memory
+        return SharedArray(shm.name, shape=array.shape, dtype=array.dtype)
 
 
 class SHM_Wrapper:
@@ -37,14 +65,14 @@ class SHM_Wrapper:
 
     def __call__(
         self,
-        input_props: ArrayProps,
-        output_props: ArrayProps,
+        shared_input: SharedArray,
+        shared_output: SharedArray,
         i: int,
         *args: Any,
         **kwargs: Any,
     ) -> None:
         """Run in parallel with shared memory."""
-        with array_from_shm(input_props, output_props) as (input, output):
+        with shared_input.as_array() as input, shared_output.as_array() as output:
             self.func(input, output, i, *args, **kwargs)
 
 
@@ -63,67 +91,19 @@ def run_parallel(
         SharedMemoryManager() as smm,
         Parallel(n_jobs=n_jobs, backend="multiprocessing") as parallel,
     ):
-        # input_shm = smm.SharedMemory(size=input_array.nbytes)
-        # input_array_sm = np.ndarray(
-        #     input_array.shape, dtype=input_array.dtype, buffer=input_shm.buf
-        # )
-        # input_array_sm[:] = input_array  # move to shared memory
-        # output_shm = smm.SharedMemory(size=output_array.nbytes)
-        # output_array_sm = np.ndarray(
-        #     output_array.shape, dtype=output_array.dtype, buffer=output_shm.buf
-        # )
-        # input_prop = ArrayProps(input_shm.name, input_array.shape, input_array.dtype)
-        # output_prop = ArrayProps(
-        #     output_shm.name, output_array.shape, output_array.dtype
-        # )
-        input_prop, input_array_sm, input_shm = array_to_shm(input_array, smm)
-        output_prop, output_array_sm, output_shm = array_to_shm(output_array, smm)
-        input_array_sm[:] = input_array  # move to shared memory
+        share_input = SharedArray.from_array(smm, input_array)
+        share_output = SharedArray.from_array(smm, output_array)
         parallel(
             delayed(SHM_Wrapper(func))(
-                input_prop,
-                output_prop,
+                share_input,
+                share_output,
                 i,
                 *args,
                 **kwargs,
             )
             for i in range(input_array.shape[parallel_axis])
         )
-        output_array[:] = output_array_sm  # copy back
+        output_array = share_output.to_array()  # copy back
         smm.shutdown()
 
     return output_array
-
-
-@contextmanager
-def array_from_shm(
-    *array_props: ArrayProps | None,
-) -> Generator[list[NDArray | None], None, None]:
-    """Get arrays from shared memory."""
-    shms = []
-    arrays = []
-    for prop in array_props:
-        if prop is None:  # optional arrays are ignored
-            arrays.append(None)
-            continue
-        nbytes = int(np.dtype(prop.dtype).itemsize * np.prod(prop.shape))
-        shms.append(SharedMemory(name=prop.name, size=nbytes))
-        arrays.append(
-            np.ndarray(shape=prop.shape, dtype=prop.dtype, buffer=shms[-1].buf)
-        )
-    yield arrays
-    del arrays
-    for s in shms:
-        s.close()
-    del shms
-
-
-def array_to_shm(
-    array: NDArray, smm: SharedMemoryManager
-) -> tuple[ArrayProps, NDArray, SharedMemory]:
-    """Move an array to shared memory."""
-    shm = smm.SharedMemory(size=array.nbytes)
-    array_sm: NDArray = np.ndarray(array.shape, dtype=array.dtype, buffer=shm.buf)
-    array_sm[:] = array  # move to shared memory
-    # Returning the shm object is required to avoid garbage collection (and segfault)
-    return ArrayProps(shm.name, array.shape, str(array.dtype)), array_sm, shm

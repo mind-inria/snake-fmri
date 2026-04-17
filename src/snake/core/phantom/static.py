@@ -1,21 +1,23 @@
 """Module to create phantom for simulation."""
 
 from __future__ import annotations
-import hashlib
+
 import contextlib
+import copy
+import hashlib
 import json
 import logging
 import os
-from pathlib import Path
 from collections.abc import Generator
 from copy import deepcopy
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from multiprocessing.managers import SharedMemoryManager
-from multiprocessing.shared_memory import SharedMemory
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from _typeshed import GenericPath
+
     from snake.mrd_utils.loader import MRDLoader
 
 import ismrmrd as mrd
@@ -24,16 +26,20 @@ from nibabel.nifti1 import Nifti1Image
 from numpy.typing import NDArray
 
 from snake._meta import ThreeFloats, ThreeInts
-from ..smaps import get_smaps
-from ..parallel import ArrayProps, array_from_shm, array_to_shm, run_parallel
+
+from ..off_resonance import get_field_map
+from ..parallel import SharedArray, run_parallel
 from ..simulation import SimConfig
-from .contrast import _contrast_gre
-from .utils import PropTissueEnum, TissueFile, resize_tissues, parse_tissue_file
+from ..smaps import get_smaps
 from ..transform import apply_affine4d, serialize_array, unserialize_array
+from .contrast import _contrast_gre
+from .utils import PropTissueEnum, TissueFile, parse_tissue_file, resize_tissues
 
 log = logging.getLogger(__name__)
 
 SNAKE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "snake-fmri")
+
+PHANTOM_ARRAYS = ["masks", "props", "labels", "smaps", "affine"]
 
 
 @dataclass
@@ -302,41 +308,36 @@ class Phantom:
         slice_dir = (-slice_dir[0], -slice_dir[1], slice_dir[2])
 
         fov_mm = tuple(np.array(self.anat_shape).astype(np.float32) * res_mm)
-
+        base_header = mrd.image.ImageHeader(
+            matrix_size=self.anat_shape,
+            field_of_view=fov_mm,
+            position=position,
+            phase_dir=phase_dir,
+            slice_dir=slice_dir,
+            read_dir=read_dir,
+            channels=1,
+            acquisition_time_stamp=0,
+            attribute_string_len=len(meta_sr),
+        )
+        header_phantom = copy.deepcopy(base_header)
+        header_phantom.channels = self.n_tissues
         # Add the phantom data
         dataset.append_image(
             "phantom",
             mrd.image.Image(
-                head=mrd.image.ImageHeader(
-                    matrix_size=self.anat_shape,
-                    field_of_view=fov_mm,
-                    position=position,
-                    phase_dir=phase_dir,
-                    slice_dir=slice_dir,
-                    read_dir=read_dir,
-                    channels=self.n_tissues,
-                    acquisition_time_stamp=0,
-                    attribute_string_len=len(meta_sr),
-                ),
+                head=header_phantom,
                 data=self.masks,
                 attribute_string=meta_sr,
             ),
         )
         # Add the smaps
         if self.smaps is not None:
+            header_smaps = copy.deepcopy(base_header)
+            header_smaps.channels = len(self.smaps)
             dataset.append_image(
                 "smaps",
                 mrd.image.Image(
-                    head=mrd.image.ImageHeader(
-                        matrix_size=self.anat_shape,
-                        field_of_view=fov_mm,
-                        position=position,
-                        phase_dir=phase_dir,
-                        slice_dir=slice_dir,
-                        read_dir=read_dir,
-                        channels=len(self.smaps),
-                        acquisition_time_stamp=0,
-                    ),
+                    head=header_smaps,
                     data=self.smaps,
                 ),
             )
@@ -347,38 +348,28 @@ class Phantom:
     def from_shared_memory(
         cls,
         name: str,
-        mask_prop: ArrayProps,
-        properties_prop: ArrayProps,
-        label_prop: ArrayProps,
-        smaps_prop: ArrayProps,
-        affine_prop: ArrayProps,
+        shared_arrays: dict[str, SharedArray | None],
     ) -> Generator[Phantom, None, None]:
         """Give access the tissue masks and properties in shared memory."""
-        with array_from_shm(
-            mask_prop, label_prop, properties_prop, smaps_prop, affine_prop
-        ) as arrs:
-            yield cls(name, *arrs)
+        arrays = {}
+        with contextlib.ExitStack() as stack:
+            for arr_name in PHANTOM_ARRAYS:
+                if (arr := shared_arrays.get(arr_name, None)) is not None:
+                    arrays[arr_name] = stack.enter_context(arr.as_array())
+            yield cls(
+                name=name,
+                **arrays,
+            )
 
-    def in_shared_memory(self, manager: SharedMemoryManager) -> tuple[
-        tuple[str, ArrayProps, ArrayProps, ArrayProps, ArrayProps | None, ArrayProps],
-        tuple[
-            SharedMemory, SharedMemory, SharedMemory, SharedMemory | None, SharedMemory
-        ],
-    ]:
-        """Add a copy of the phantom in shared memory."""
-        tissue_mask, _, tisue_mask_smm = array_to_shm(self.masks, manager)
-        tissue_props, _, tissue_prop_smm = array_to_shm(self.props, manager)
-        labels, _, labels_sm = array_to_shm(self.labels, manager)
-        affine, _, affine_sm = array_to_shm(self.affine, manager)
-        if self.smaps is not None:
-            smaps, _, smaps_sm = array_to_shm(self.smaps, manager)
-        else:
-            smaps, smaps_sm = None, None
-
-        return (
-            (self.name, tissue_mask, tissue_props, labels, smaps, affine),
-            (tisue_mask_smm, tissue_prop_smm, labels_sm, smaps_sm, affine_sm),
-        )
+    def in_shared_memory(
+        self, manager: SharedMemoryManager
+    ) -> tuple[str, dict[str, SharedArray]]:
+        """Create a dict that hold all the arrays of the phantom in shared memory."""
+        shared_arrays = {}
+        for arr_name in PHANTOM_ARRAYS:
+            if arr := getattr(self, arr_name) is not None:
+                shared_arrays[arr_name] = SharedArray.from_array(manager, arr)  # type: ignore
+        return self.name, shared_arrays
 
     def masks2nifti(self) -> Nifti1Image:
         """Return the masks of the phantom as a Nifti object."""

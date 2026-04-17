@@ -2,12 +2,19 @@
 
 import copy
 import os
-
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from tqdm.auto import tqdm
+
+from snake._meta import NoCaseEnum
+from snake.core.parallel import (
+    SharedArray,
+    SharedMemoryManager,
+)
+from snake.core.simulation import SimConfig
 
 # Local imports
 from snake.mrd_utils import (
@@ -15,15 +22,6 @@ from snake.mrd_utils import (
     MRDLoader,
     NonCartesianFrameDataLoader,
 )
-from snake.core.parallel import (
-    ArrayProps,
-    SharedMemoryManager,
-    array_from_shm,
-    array_to_shm,
-)
-from snake._meta import NoCaseEnum
-from snake.core.simulation import SimConfig
-from tqdm.auto import tqdm
 
 from .base import BaseReconstructor
 from .fourier import ifft, init_nufft
@@ -32,12 +30,12 @@ from .fourier import ifft, init_nufft
 def _reconstruct_cartesian_frame(
     filename: os.PathLike,
     idx: int,
-    smaps_props: ArrayProps | None,
-    final_props: ArrayProps,
+    smaps_props: SharedArray | None,
+    final_props: SharedArray,
 ) -> int:
     """Reconstruct a single frame."""
     with (
-        array_from_shm(final_props) as final_images,
+        final_props.as_array() as final_images,
         CartesianFrameDataLoader(filename) as data_loader,
     ):
         mask, kspace = data_loader.get_kspace_frame(idx)
@@ -47,8 +45,7 @@ def _reconstruct_cartesian_frame(
             axes = tuple(range(len(data_loader.shape), 0, -1))
         adj_data = ifft(kspace, axis=axes)
         if smaps_props is not None and data_loader.n_coils > 1:
-            with array_from_shm(smaps_props) as smaps_info:
-                smaps = smaps_info[0]
+            with smaps_props.as_array() as smaps:
                 adj_data_smaps_comb = abs(
                     np.sum(adj_data * smaps.conj(), axis=0)
                     / np.sum(smaps * smaps.conj(), axis=0)
@@ -60,7 +57,7 @@ def _reconstruct_cartesian_frame(
         else:
             adj_data_smaps_comb = abs(adj_data).astype(np.float32, copy=False)
 
-        final_images[0][idx] = adj_data_smaps_comb
+        final_images[idx] = adj_data_smaps_comb
     return idx
 
 
@@ -110,8 +107,8 @@ class ZeroFilledReconstructor(BaseReconstructor):
         ):
             smaps_props = None
             if smaps is not None:
-                smaps_props, smaps_shared, smaps_sm = array_to_shm(smaps, smm)
-            final_props, final_shared, final_sm = array_to_shm(final_images, smm)
+                smaps_props, SharedArray.from_array(smm, smaps)
+            final_props = SharedArray.from_array(smm, final_images)
 
             futures = {
                 executor.submit(
@@ -126,10 +123,7 @@ class ZeroFilledReconstructor(BaseReconstructor):
             for future in as_completed(futures):
                 future.result()
                 pbar.update(1)
-            final_images[:] = final_shared.copy()
-            final_sm.close()
-            if smaps_props is not None:
-                smaps_sm.close()
+            final_images[:] = final_props.to_array()  # copy back
             smm.shutdown()
         return final_images
 
@@ -201,10 +195,10 @@ class SequentialReconstructor(BaseReconstructor):
     ) -> None:
         """Set up the reconstructor."""
         from fmri.operators.weighted import AutoWeightedSparseThreshold
+        from modopt.base.backend import get_backend
         from modopt.opt.linear import Identity
         from modopt.opt.linear.wavelet import WaveletTransform
         from modopt.opt.proximity import SparseThreshold
-        from modopt.base.backend import get_backend
 
         if sim_conf is None and shape is None:
             raise ValueError("SimConfig or shape must be provided.")

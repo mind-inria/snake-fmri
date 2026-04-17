@@ -24,7 +24,7 @@ from snake._meta import EnvConfig, MetaDCRegister, batched
 
 from ...mrd_utils import MRDLoader, make_base_mrd
 from ..handlers import AbstractHandler, HandlerList
-from ..parallel import ArrayProps
+from ..parallel import SharedArray
 from ..phantom import DynamicData, Phantom, PropTissueEnum
 from ..sampling import BaseSampler
 from ..simulation import SimConfig
@@ -120,10 +120,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         filename: GenericPath,
         chunk: Sequence[int],
         tmp_dir: str,
-        shared_phantom_props: (
-            tuple[str, ArrayProps, ArrayProps, ArrayProps, ArrayProps, ArrayProps]
-            | None
-        ) = None,
+        shared_phantom_props: dict[str, SharedArray | None] | None = None,
         **kwargs: Mapping[str, Any],
     ) -> str:
         """Entry point for worker.
@@ -153,7 +150,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
                 phantom = data_loader.get_phantom()
                 ksp = _job_model(phantom, ddatas, sim_conf, trajs, **kwargs)
             else:
-                with Phantom.from_shared_memory(*shared_phantom_props) as phantom:
+                with Phantom.from_shared_memory("tmp", shared_phantom_props) as phantom:
                     ksp = _job_model(phantom, ddatas, sim_conf, trajs, **kwargs)
 
         chunk_file = os.path.join(tmp_dir, f"partial_{chunk[0]}-{chunk[-1]}.npy")
@@ -298,7 +295,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
             ) as tmp_chunk_dir,
         ):
             # data_loader._file.swmr_mode = True
-            phantom_props, _ = phantom.in_shared_memory(smm)
+            _, phantom_props = phantom.in_shared_memory(smm)
             # TODO: also put the smaps in shared memory
             futures = {
                 executor.submit(
