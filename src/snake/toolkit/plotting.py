@@ -1,14 +1,20 @@
 """Plotting utilities for the project."""
 
 import matplotlib
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
+import matplotlib.colorbar
+import matplotlib.colors
 import matplotlib.pyplot as plt
+
 import numpy as np
 from numpy.typing import NDArray
 from mpl_toolkits.axes_grid1.axes_divider import Size, make_axes_locatable
 from skimage.measure import find_contours
 from matplotlib.cm import ScalarMappable
+
+if TYPE_CHECKING:
+    import matplotlib.image
 
 
 def get_coolgraywarm(thresh: float = 3, max: float = 7) -> matplotlib.colorbar.Colorbar:
@@ -101,10 +107,8 @@ def _get_hdiv_vdiv(
     width_inches: float,
     cbar: bool = False,
 ) -> tuple[NDArray, NDArray]:
-    sizes = np.array([(bb.stop - bb.start) for b in bbox for bb in b])
 
     sizes = tuple(array_bg[s][b].shape for s, b in zip(slices, bbox, strict=False))
-    alpha1 = sizes[1][1] / sizes[2][1]
     update_sizes = [[0, 0], [0, 0], [0, 0]]
     update_sizes[2][0] = sizes[2][0]
     update_sizes[2][1] = sizes[2][1]

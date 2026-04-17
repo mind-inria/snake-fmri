@@ -280,8 +280,8 @@ class StackOfSpiralSampler(NonCartesianAcquisitionSampler):
             acsz=self.acsz,
             n_samples=n_samples,
             nb_revolutions=self.nb_revolutions,
-            pdfz=self.pdfz,
-            orderz=self.orderz,
+            pdfz=VDSpdf(self.pdfz),
+            orderz=VDSorder(self.orderz),
             spiral=self.spiral_name,
             rotate_angle=self.rotate_angle,
             in_out=self.in_out,
@@ -341,8 +341,8 @@ class EPI3dAcquisitionSampler(BaseSampler):
     in_out = True
     acsz: float | int
     accelz: int
-    orderz: VDSorder = VDSorder.CENTER_OUT
-    pdfz: VDSpdf = VDSpdf.GAUSSIAN
+    orderz: VDSorder | str = VDSorder.CENTER_OUT
+    pdfz: VDSpdf | str = VDSpdf.GAUSSIAN
 
     def _single_frame(self, sim_conf: SimConfig) -> NDArray:
         """Generate the sampling pattern."""
@@ -350,8 +350,8 @@ class EPI3dAcquisitionSampler(BaseSampler):
             shape=sim_conf.shape,
             accelz=self.accelz,
             acsz=self.acsz,
-            orderz=self.orderz,
-            pdfz=self.pdfz,
+            orderz=VDSorder(self.orderz),
+            pdfz=VDSpdf(self.pdfz),
             rng=sim_conf.rng,
         )
 

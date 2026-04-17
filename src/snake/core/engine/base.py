@@ -9,9 +9,8 @@ import os
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing.managers import SharedMemoryManager
-from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TYPE_CHECKING
 
 
 import ismrmrd as mrd
@@ -31,7 +30,8 @@ from ..sampling import BaseSampler
 from ..simulation import SimConfig
 from .utils import get_noise
 
-GenericPath = Path | str | os.PathLike
+if TYPE_CHECKING:
+    from _typeshed import GenericPath
 
 
 @dataclass_transform(kw_only_default=True)
@@ -96,8 +96,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         dyn_datas: list[DynamicData],
         sim_conf: SimConfig,
         trajectories: NDArray,  # (Chunksize, N, 3)
-        *args: Any,
-        **kwargs: Any,
+        slice_2d: bool = False,
     ) -> NDArray:
         raise NotImplementedError
 
@@ -107,8 +106,7 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
         dyn_datas: list[DynamicData],
         sim_conf: SimConfig,
         trajectories: NDArray,  # (Chunksize, N, 3)
-        *args: Any,
-        **kwargs: Any,
+        slice_2d: bool = False,
     ) -> NDArray:
         raise NotImplementedError
 

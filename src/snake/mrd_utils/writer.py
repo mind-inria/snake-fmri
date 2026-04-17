@@ -41,7 +41,7 @@ def get_mrd_header(
         deviceID="SNAKE",
         systemVendor="SNAKE",
         systemModel=f"{version}-{engine}",
-        deviceSerialNumber=42,
+        deviceSerialNumber="42",
         systemFieldStrength_T=sim_conf.hardware.field,
         receiverChannels=sim_conf.hardware.n_coils,
     )

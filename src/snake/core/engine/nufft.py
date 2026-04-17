@@ -1,10 +1,14 @@
 """Acquisition engine using nufft."""
 
+from snake.mrd_utils import MRDLoader
+
 from collections.abc import Sequence
+from typing import override
 
 import ismrmrd as mrd
 import numpy as np
 from mrinufft.operators import FourierOperatorBase, get_operator
+from mrinufft.extras.field_map import get_complex_fieldmap_rad
 from numpy.typing import NDArray
 
 from snake.core.phantom import DynamicData, Phantom
@@ -23,6 +27,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
     snr: float = np.inf
     slice_2d: bool = False
 
+    @override
     def _job_trajectories(
         self,
         dataset: mrd.Dataset,
@@ -80,6 +85,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         return nufft
 
     @staticmethod
+    @override
     def _job_model_T2s(
         phantom: Phantom,
         dyn_datas: list[DynamicData],
@@ -129,6 +135,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
 
         return final_ksp
 
+    @override
     @staticmethod
     def _job_model_simple(
         phantom: Phantom,
@@ -167,11 +174,78 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
             final_ksp[i] = nufft.op(phantom_state)
         return final_ksp
 
+    @override
+    @staticmethod
+    def _job_model_orc(
+        phantom: Phantom,
+        dyn_datas: list[DynamicData],
+        sim_conf: SimConfig,
+        trajectories: NDArray,
+        nufft_backend: str,
+        slice_2d: bool = False,
+    ) -> np.ndarray:
+        """Acquire k-space data with T2s relaxation effect and off-resonance."""
+        chunk_size, n_samples, _ = trajectories.shape
+
+        final_ksp = np.zeros(
+            (chunk_size, sim_conf.hardware.n_coils, n_samples), dtype=np.complex64
+        )
+        nufft = NufftAcquisitionEngine._init_model_nufft(
+            trajectories[0],
+            sim_conf,
+            backend=nufft_backend,
+            slice_2d=slice_2d,
+        )
+        echo_idx = np.argmin(np.sum(np.abs(trajectories[0]) ** 2), axis=-1)
+        t = (
+            sim_conf.hardware.dwell_time_ms
+            * (np.arange(n_samples, dtype=np.float32) - echo_idx)
+            * 1e-3
+        )  # convert to seconds
+        nufft_orc = nufft.with_off_resonance_correction(
+            readout_time=t, b0_map=phantom.field_map, r2star_map=phantom.r2star_map()
+        )
+        # (n_tissues_true, n_samples) Filter the tissues that have NaN Values
+        for i, traj in enumerate(trajectories):
+            phantom_state, smaps, field_map = get_phantom_state(
+                phantom, dyn_datas, i, sim_conf
+            )
+            if field_map is None:
+                raise ValueError("Field map is required for off-resonance correction.")
+            nufft_orc.n_batchs = 1  # number of tissues.
+
+            if slice_2d:
+                slice_loc = int((traj[0, -1] + 0.5) * sim_conf.shape[-1])
+                nufft.samples = traj[:, :2]
+                if smaps is not None:
+                    nufft.smaps = smaps[..., slice_loc]
+                off_res_phase = np.exp(
+                    field_map.imag[..., slice_loc] * sim_conf.seq.TE * 1e-3
+                )
+
+                nufft_orc.update_field_map(field_map[..., slice_loc])
+                phantom_state = phantom_state[None, ..., slice_loc]
+            else:
+                nufft.samples = traj
+                nufft.smaps = smaps
+                phantom_state = phantom_state[None, ...]
+
+                off_res_phase = np.exp(field_map.imag * sim_conf.seq.TE * 1e-3)
+                nufft_orc.update_field_map(field_map[..., slice_loc])
+
+            # apply the off-resonance effective at TE. The field map is in Hz,
+            # convert to radians and multiply by TE to get the phase.
+            # The T2s effect at TE is already taken into account in the phantom state
+            # when contrast is applied.
+            phantom_state = phantom_state * off_res_phase
+            final_ksp[i] = nufft_orc.op(phantom_state)
+        return final_ksp
+
     def _write_chunk_data(
-        self, dataset: mrd.Dataset, chunk: Sequence[int], chunk_data: NDArray
+        self, data_loader: MRDLoader, chunk: Sequence[int], chunk_data: NDArray
     ) -> None:
         shot_idx = np.asarray(chunk)
-        acq_chunk = dataset._dataset["data"][shot_idx]
+        acq_chunk = data_loader._dataset["data"][shot_idx]
         chunk_data = chunk_data.view(np.float32)
         acq_chunk["data"] = chunk_data.reshape(acq_chunk["data"].shape)
-        dataset._dataset["data"][shot_idx] = acq_chunk
+        data_loader._dataset["data"][shot_idx] = acq_chunk

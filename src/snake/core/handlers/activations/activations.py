@@ -51,7 +51,7 @@ class ActivationMixin(LogMixin):
     nilearn.compute_regressors
     """
 
-    event_condition: pd.DataFrame | np.ndarray
+    event_condition: pd.DataFrame
     duration: float
     offset: float = 0
     event_name: str
@@ -117,6 +117,9 @@ class ActivationMixin(LogMixin):
 
         Currently, only the Harvard-Oxford atlas is supported.
         """
+        if self.atlas is None:
+            raise ValueError("Atlas is not specified.")
+
         atlas_base, atlas_name = self.atlas.split("__")
         from nilearn.datasets.atlas import fetch_atlas_harvard_oxford
 

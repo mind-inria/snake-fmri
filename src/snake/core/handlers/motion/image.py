@@ -53,7 +53,7 @@ class RandomMotionImageHandler(AbstractHandler):
 
     def __post_init__(self):
         if (self.ts_std_mms is None or self.rs_std_degs is None) and (
-            self.motion_file is None or self.motion_file_tr is None
+            self.motion_file is None or self.motion_file_tr_ms is None
         ):
             raise ValueError(
                 "At least one of ts_std_mm, rs_std_mm or motion_file must be provided."

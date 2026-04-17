@@ -97,11 +97,11 @@ def run_parallel(
 
 @contextmanager
 def array_from_shm(
-    *array_props: ArrayProps,
-) -> Generator[list[NDArray], None, None]:
+    *array_props: ArrayProps | None,
+) -> Generator[list[NDArray | None], None, None]:
     """Get arrays from shared memory."""
     shms = []
-    arrays: list[NDArray] = []
+    arrays = []
     for prop in array_props:
         if prop is None:  # optional arrays are ignored
             arrays.append(None)

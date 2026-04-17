@@ -55,7 +55,7 @@ def get_snr(test: NDArray, ref: NDArray, roi: NDArray | None = None) -> float:
 
 
 def get_snr_console_db(
-    test: NDArray, roi_data: NDArray = None, roi_noise: NDArray = None
+    test: NDArray, roi_data: NDArray | None = None, roi_noise: NDArray | None = None
 ) -> float:
     """Compute the SNR 'like at the console'.
 

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import hydra
 from hydra.core.config_store import ConfigStore
@@ -14,7 +15,6 @@ from snake.core.sampling import BaseSampler
 
 from snake.toolkit.reconstructors import BaseReconstructor
 
-
 # Import all handlers and samplers in plugins files
 # to register them in their respective registries
 # This is needed to be able to use them in the configuration file
@@ -24,7 +24,6 @@ import pkgutil
 import importlib
 import sys
 import os
-
 
 print("Importing plugins")
 # Adding the current directory to the path
@@ -142,7 +141,7 @@ def cleanup_cuda() -> None:
     cp._default_pinned_memory_pool = cp.cuda.PinnedMemoryPool()
 
 
-def make_hydra_cli(fun: callable) -> callable:
+def make_hydra_cli(fun: Callable) -> Callable:
     """Create a Hydra CLI for the function."""
     return hydra.main(
         version_base=None, config_path="../../../cli-conf", config_name="config"

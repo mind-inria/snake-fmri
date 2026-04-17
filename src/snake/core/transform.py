@@ -75,7 +75,7 @@ def apply_affine(
     data: NDArray[np.float32],
     old_affine: NDArray[np.float32],
     new_affine: NDArray[np.float32],
-    new_shape: ThreeInts,
+    new_shape: tuple[int, ...],
     output: NDArray[np.float32] | None = None,
     transform_affine: NDArray[np.float32] | None = None,
     use_gpu: bool = True,
