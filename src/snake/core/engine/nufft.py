@@ -8,7 +8,6 @@ from typing import override
 import ismrmrd as mrd
 import numpy as np
 from mrinufft.operators import FourierOperatorBase, get_operator
-from mrinufft.extras.field_map import get_complex_fieldmap_rad
 from numpy.typing import NDArray
 
 from snake.core.phantom import DynamicData, Phantom
@@ -115,7 +114,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         )
         nufft.n_batchs = len(phantom.masks)  # number of tissues.
         for i, traj in enumerate(trajectories):
-            phantom_state, smaps = get_phantom_state(
+            phantom_state, smaps, _ = get_phantom_state(
                 phantom, dyn_datas, i, sim_conf, aggregate=False
             )
             if slice_2d:
@@ -159,7 +158,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         )
         # (n_tissues_true, n_samples) Filter the tissues that have NaN Values
         for i, traj in enumerate(trajectories):
-            phantom_state, smaps = get_phantom_state(phantom, dyn_datas, i, sim_conf)
+            phantom_state, smaps, _ = get_phantom_state(phantom, dyn_datas, i, sim_conf)
             nufft.n_batchs = 1  # number of tissues.
             if slice_2d:
                 slice_loc = int((traj[0, -1] + 0.5) * sim_conf.shape[-1])

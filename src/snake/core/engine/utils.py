@@ -8,6 +8,8 @@ from numpy.typing import NDArray
 from ..phantom import Phantom, DynamicData
 from ..simulation import SimConfig
 
+from mrinufft.extras.field_map import get_complex_fieldmap_rad
+
 
 def get_phantom_state(
     phantom: Phantom,
@@ -15,7 +17,7 @@ def get_phantom_state(
     i: int,
     sim_conf: SimConfig,
     aggregate: bool = True,
-) -> tuple[NDArray, NDArray | None]:
+) -> tuple[NDArray, NDArray | None, NDArray | None]:
     """Get phantom state after applying all temporal variation."""
     frame_phantom = deepcopy(phantom)
     for dyn_data in dyn_datas:
@@ -26,6 +28,8 @@ def get_phantom_state(
         new_shape=sim_conf.shape,
         use_gpu=True,
     )
+    r2star_map = frame_phantom.r2star_map()
+    field_map = get_complex_fieldmap_rad(phantom.field_map, r2star_map)
     return (
         frame_phantom.contrast(
             sim_conf=sim_conf,
@@ -33,6 +37,7 @@ def get_phantom_state(
             aggregate=aggregate,
         ),
         frame_phantom.smaps,
+        field_map,
     )
 
 

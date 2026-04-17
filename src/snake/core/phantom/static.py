@@ -72,6 +72,7 @@ class Phantom:
     labels: NDArray[np.str_]
     props: NDArray[np.float32]
     smaps: NDArray[np.complex64] | None = None
+    field_map: NDArray[np.float32] | None = None
     affine: NDArray[np.float32] = field(
         default_factory=lambda: np.eye(4, dtype=np.float32)
     )
@@ -93,6 +94,7 @@ class Phantom:
             labels,
             props,
             smaps=self.smaps,
+            field_map=self.field_map,
             affine=self.affine,
         )
 
@@ -119,6 +121,10 @@ class Phantom:
             log.debug(f"Created smaps for {n_coils} coils.")
         elif self.smaps is not None:
             log.warning("Smaps already exists.")
+
+    def make_field_map(self, sim_conf: SimConfig) -> None:
+        """Create field map inhomogeneity from the phantom."""
+        self.field_map = get_field_map(self.masks, self.props, sim_conf)
 
     @classmethod
     def from_brainweb(
@@ -151,7 +157,8 @@ class Phantom:
         Returns
         -------
         Phantom
-            The phantom object.
+            The phantom object. Brainweb phantom does not have a field-map but can have
+            smaps if sim_conf.hardware.n_coils > 1.
         """
         if cache_dir is None:
             cache_dir = os.environ.get("SNAKE_CACHE_DIR", SNAKE_CACHE_DIR)
@@ -235,7 +242,6 @@ class Phantom:
                 tissues_mask.shape[1:],
                 n_coils=sim_conf.hardware.n_coils,
             )
-
         phantom = cls(
             f"brainweb-{sub_id:02d}",
             tissues_mask,
@@ -243,6 +249,7 @@ class Phantom:
             props=np.array(tissues_list.values()),
             smaps=smaps,
             affine=affine,
+            field_map=None,
         )
 
         if phantom_file:
@@ -255,7 +262,7 @@ class Phantom:
         cls, dataset: MRDLoader | os.PathLike | str, imnum: int = 0
     ) -> Phantom:
         """Load the phantom from a mrd dataset."""
-        from snake.mrd_utils.loader import get_affine_from_image, MRDLoader
+        from snake.mrd_utils.loader import MRDLoader, get_affine_from_image
 
         if not isinstance(dataset, MRDLoader):
             dataset = MRDLoader(dataset)
@@ -271,6 +278,10 @@ class Phantom:
                 smaps = dataset._read_image("smaps", imnum).data
             except LookupError:
                 smaps = None
+            try:
+                field_map = dataset._read_image("field_map", imnum).data
+            except LookupError:
+                field_map = None
 
         return cls(
             masks=image.data,
@@ -279,6 +290,7 @@ class Phantom:
             name=name,
             affine=affine,
             smaps=smaps,
+            field_map=field_map,
         )
 
     def to_mrd_dataset(self, dataset: mrd.Dataset | GenericPath) -> mrd.Dataset:
@@ -341,6 +353,16 @@ class Phantom:
                     data=self.smaps,
                 ),
             )
+        if self.field_map is not None:
+            header_field_map = copy.deepcopy(base_header)
+            dataset.append_image(
+                "field_map",
+                mrd.image.Image(
+                    head=header_field_map,
+                    data=self.field_map,
+                ),
+            )
+
         return dataset
 
     @classmethod
@@ -438,6 +460,15 @@ class Phantom:
             smaps=smaps,
             affine=affine,
         )
+
+    def r2star_map(self) -> NDArray[np.float32]:
+        """Compute the R2* map of the phantom."""
+        t2s = self.props[:, PropTissueEnum.T2s.value]
+        r2s = 1 / t2s
+        r2s_map = np.zeros(self.anat_shape, dtype=np.float32)
+        for r2, m in zip(r2s, self.masks, strict=False):
+            r2s_map += r2 * m
+        return r2s_map
 
     def contrast(
         self,
