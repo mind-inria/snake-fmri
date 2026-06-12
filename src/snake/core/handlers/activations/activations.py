@@ -121,7 +121,7 @@ class ActivationMixin(LogMixin):
         from nilearn.datasets.atlas import fetch_atlas_harvard_oxford
 
         if atlas_base == "hardvard-oxford":
-            atlas = fetch_atlas_harvard_oxford(atlas_name=atlas_name)
+            atlas = fetch_atlas_harvard_oxford(atlas_name=atlas_name) 
         else:
             raise ValueError(f"Atlas {atlas_base} not supported.")
         maps = atlas.maps

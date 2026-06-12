@@ -11,6 +11,7 @@ from .samplers import (
     SequentialLoadTrajectorySampler,
     StackedSequentialLoadTrajectorySampler
 )
+from .sampler_sp import SPARKLINGSampler
 
 __all__ = [
     "BaseSampler",
@@ -22,4 +23,5 @@ __all__ = [
     "RotatedStackOfSpiralSampler",
     "NonCartesianAcquisitionSampler",
     "StackedSequentialLoadTrajectorySampler",
+    "SPARKLINGSampler",
 ]

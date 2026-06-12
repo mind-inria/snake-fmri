@@ -81,6 +81,7 @@ class ConfigSNAKE:
     cache_dir: Path = "${oc.env:PWD}/cache"  # type: ignore
     result_dir: Path = "${oc.env:PWD}/results"  # type: ignore
     filename: Path = "test.mrd"  # type: ignore
+    smaps_filename: Path = "${oc.env:PWD}/smaps.npy"  # type: ignore
 
 
 def conf_validator(cfg: DictConfig) -> ConfigSNAKE:

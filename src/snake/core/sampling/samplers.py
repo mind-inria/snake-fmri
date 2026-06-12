@@ -3,6 +3,7 @@
 from __future__ import annotations
 import ismrmrd as mrd
 import numpy as np
+from typing import ClassVar
 from numpy.typing import NDArray
 from tqdm.auto import tqdm
 from ..simulation import SimConfig
@@ -21,7 +22,7 @@ from snake.mrd_utils.utils import ACQ
 from snake._meta import batched, EnvConfig
 from mrinufft.io import read_trajectory
 from collections.abc import Generator
-
+from pydantic import Field
 
 class NonCartesianAcquisitionSampler(BaseSampler):
     """
@@ -219,6 +220,9 @@ class LoadTrajectorySampler(NonCartesianAcquisitionSampler):
     raster_time: float = 0.01
     dwell_time: float = 0.01
     in_out: bool = True
+    frame_index: int = 0
+    slice_num: int = 1
+    read_shots: bool = False
 
     def _single_frame(self, sim_conf: SimConfig) -> NDArray:
         """Load the trajectory."""
@@ -226,9 +230,14 @@ class LoadTrajectorySampler(NonCartesianAcquisitionSampler):
             self.path,
             dwell_time=self.dwell_time,
             raster_time=self.raster_time,
+            read_shots=self.read_shots
         )[0]
+        if not self.constant:
+            data = data[self.frame_index*self.slice_num:(self.frame_index+1)*self.slice_num, ...]
+            self.frame_index += 1
         data = np.minimum(data, 0.5)
         data = np.maximum(data, -0.5)
+        
         return np.float32(data) #single slice (temporary change)
     
 
@@ -309,6 +318,140 @@ class StackedSequentialLoadTrajectorySampler(LoadTrajectorySampler):
     n_shot_slices: int = 1
     frame_index = 0
     constant_2d: bool = True
+
+    max_noncore_overlap_ratio: float = 0.20   # 非中心相邻最大重合比例
+    n_planes_per_frame: int = 20             # 你明确每帧 20/40，这里直接固定
+
+  
+    _prev_noncore: ClassVar[set[int] | None] = None
+    _z_counts: ClassVar[np.ndarray | None] = None
+
+    @property
+    def z_counts(self):
+        return None if self._z_counts is None else self._z_counts.copy()
+    
+    def _center_indices(self, sizeZ: int, acsz: int | float) -> list[int]:
+        if isinstance(acsz, float):
+            n_center = int(round(acsz * sizeZ))
+        else:
+            n_center = int(acsz)
+        n_center = max(0, min(sizeZ, n_center))
+        if n_center == 0:
+            return []
+        center = sizeZ // 2
+        idx = np.arange(sizeZ)
+        chosen = idx[np.argsort(np.abs(idx - center))[:n_center]]
+        return list(map(int, chosen))
+
+    def _select_z_indices(self, sizeZ: int, acsz: int | float, rng) -> np.ndarray:
+        from .factories import flip2center
+        # init state
+        if self._prev_noncore is None:
+            self._prev_noncore = set()
+        if self._z_counts is None or len(self._z_counts) != sizeZ:
+            self._z_counts = np.zeros(sizeZ, dtype=np.int64)
+            self._prev_noncore = set()
+
+        rng = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
+
+        center_idx = self._center_indices(sizeZ, acsz)
+        center_set = set(center_idx)
+
+        n_total = min(self.n_planes_per_frame, sizeZ)
+        if n_total <= len(center_idx):
+            z = np.array(center_idx[:n_total], dtype=np.int32)
+            return z
+
+        n_noncore = n_total - len(center_idx)
+        overlap_limit = int(np.floor(self.max_noncore_overlap_ratio * n_noncore))
+
+        # candidates = all noncore planes
+        candidates = [i for i in range(sizeZ) if i not in center_set]
+
+        # sort by (count asc, random tie-break)
+        counts = self._z_counts[candidates]
+        tie = rng.random(len(candidates))
+        order = np.lexsort((tie, counts))
+        candidates = [candidates[i] for i in order]
+
+        chosen_noncore = []
+        overlap_used = 0
+
+        # pass 1: enforce overlap limit
+        for z in candidates:
+            if z in self._prev_noncore:
+                if overlap_used >= overlap_limit:
+                    continue
+                overlap_used += 1
+            chosen_noncore.append(z)
+            if len(chosen_noncore) == n_noncore:
+                break
+
+        # pass 2: if not enough (constraint too tight), fill ignoring overlap
+        if len(chosen_noncore) < n_noncore:
+            chosen_set = set(chosen_noncore)
+            for z in candidates:
+                if z in chosen_set:
+                    continue
+                chosen_noncore.append(z)
+                if len(chosen_noncore) == n_noncore:
+                    break
+
+        # update state (balance on noncore)
+        self._z_counts[chosen_noncore] += 1
+        self._prev_noncore = set(chosen_noncore)
+
+        z_index = np.array(center_idx + chosen_noncore, dtype=np.int32)
+
+        # apply order of lines
+        orderz = VDSorder(self.orderz)
+        if orderz == VDSorder.CENTER_OUT:
+            line_locs = flip2center(sorted(z_index), sizeZ // 2)
+        elif orderz == VDSorder.RANDOM:
+            line_locs = rng.permutation(z_index)
+        elif orderz == VDSorder.TOP_DOWN:
+            line_locs = np.array(sorted(z_index))
+        else:
+            raise ValueError(f"Unknown direction '{orderz}'.")
+        
+        return line_locs
+
+    # def stack_EPI_Sparkling_factory(
+    #     self,
+    #     shape: tuple[int, ...],
+    #     accelz: int,
+    #     acsz: int | float,
+    #     n_samples: int,
+    #     in_out: bool = True,
+    #     n_shot_slices: int = 1,
+    #     orderz: VDSorder = VDSorder.TOP_DOWN,
+    #     pdfz: VDSpdf = VDSpdf.UNIFORM,
+    #     raster_time: float = 0.01,
+    #     dwell_time: float = 0.005,
+    #     rng: int | None | np.random.Generator = None,
+    #     sim_conf: SimConfig = None,
+    #     path: list[str] = None,
+    # ) -> np.ndarray:
+
+    #     sizeZ = shape[-1]
+
+    #     # --- 用受约束选择替换原 get_kspace_slice_loc ---
+    #     z_index = self._select_z_indices(sizeZ=sizeZ, acsz=acsz, rng=rng)
+    #     # ------------------------------------------------
+
+    #     Traj_2D = self.load_2D_traj(sim_conf, path, raster_time, dwell_time)
+
+    #     z_kspace = (z_index - sizeZ // 2) / sizeZ
+    #     nsamples = Traj_2D.shape[1] // n_shot_slices
+    #     Traj_2D = Traj_2D.reshape(n_shot_slices, nsamples, 2)
+
+    #     nz = len(z_kspace)
+    #     kspace_locs3d = np.zeros((nz * n_shot_slices, nsamples, 3), dtype=np.float32)
+    #     for i in range(nz):
+    #         kspace_locs3d[i * n_shot_slices : (i + 1) * n_shot_slices, :, :2] = Traj_2D
+    #         kspace_locs3d[i * n_shot_slices : (i + 1) * n_shot_slices, :, 2] = z_kspace[i]
+
+    #     return kspace_locs3d.astype(np.float32)
 
     def load_2D_traj(self, sim_conf: SimConfig, path, raster_time, dwell_time) -> NDArray:
         """Load the 2D trajectory."""

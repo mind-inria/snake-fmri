@@ -67,7 +67,7 @@ class ConjugateGradientReconstructor(ZeroFilledReconstructor):
                         x_init=x_init[:,:,j], 
                         num_iter=self.max_iter, 
                         tol=self.tol,
-                       
+                        compute_backend="cupy"  
                     )
             else:
                 nufft_operator.samples = traj.reshape(
@@ -79,6 +79,7 @@ class ConjugateGradientReconstructor(ZeroFilledReconstructor):
                     x_init=np.array(x_init), 
                     num_iter=self.max_iter, 
                     tol=self.tol,
+                    compute_backend="cupy"  
           
                 )
             x_iter = x_iter.copy() 
@@ -106,7 +107,7 @@ class ConjugateGradientReconstructor(ZeroFilledReconstructor):
                         x_init=x_init[:,:,j], 
                         num_iter=self.max_iter, 
                         tol=self.tol,
-                     
+                        compute_backend="cupy"  
                     )    
             else:
                 nufft_operator.samples = traj.reshape(
@@ -118,6 +119,7 @@ class ConjugateGradientReconstructor(ZeroFilledReconstructor):
                     x_init=np.array(x_init),
                     num_iter=self.max_iter, 
                     tol=self.tol,
+                    compute_backend="cupy"  
            
                 )
                 #loss_list.append(loss)

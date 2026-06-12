@@ -190,6 +190,7 @@ class SequentialReconstructor(BaseReconstructor):
     nufft_backend: str = "gpunufft"
     density_compensation: None | str | bool = "pipe"
     restart_strategy: RestartStrategy = RestartStrategy.WARM
+    init_strategy: str = "cold"
     compute_backend: str = "cupy"
 
     def __str__(self) -> str:
@@ -271,8 +272,8 @@ class SequentialReconstructor(BaseReconstructor):
             samples=traj,
             shape=data_loader.shape,
             n_coils=data_loader.n_coils,
-            smaps=smaps[..., None] if smaps is not None else None,
-            # smaps=xp.array(smaps) if smaps is not None else None,
+            #smaps=smaps[..., None] if smaps is not None else None,
+            smaps=xp.array(smaps) if smaps is not None else None,
             density=density_compensation,
             squeeze_dims=True,
             **kwargs,
@@ -304,6 +305,27 @@ class SequentialReconstructor(BaseReconstructor):
         else:
             x_init = fourier_op.adj_op(xp.array(data, copy=False))
 
+        if self.init_strategy == "global":
+            frames = list(tqdm(data_loader.iter_frames(),
+                    total=data_loader.n_frames, position=0))
+            trajs, datas = zip(*[(traj, data) for _, traj, data in frames])
+
+            trajs = np.array(trajs)
+            data_merge = np.array(datas)
+            data_merge = np.moveaxis(data_merge, 0, 1)
+            data_merge = data_merge.reshape(data_merge.shape[0], -1, data_merge.shape[-1])
+            nufft_op_merge = get_operator(self.nufft_backend)(
+                samples=trajs,
+                shape=data_loader.shape,
+                density='pipe',
+                n_batchs=1,
+                n_coils=data_loader.n_coils,
+                smaps=smaps,   
+            )
+            recon_merge = nufft_op_merge.adj_op(data_merge.reshape(data_merge.shape[0], -1))
+            x_init = recon_merge.copy() 
+        else:
+            x_init = x_init.copy()
         pbar_frames = tqdm(total=data_loader.n_frames, position=0)
         pbar_iter = tqdm(total=self.max_iter_per_frame, position=1)
         for i, traj, data in data_loader.iter_frames():
