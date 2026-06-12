@@ -11,6 +11,7 @@ from .loader import (
 )
 from .utils import ACQ, b64encode2obj, obj2b64encode
 from .writer import make_base_mrd
+from .siemens_loader import SiemensDataLoader
 
 __all__ = [
     "ACQ",
@@ -24,4 +25,5 @@ __all__ = [
     "read_mrd_header",
     "b64encode2obj",
     "obj2b64encode",
+    "SiemensDataLoader",
 ]
