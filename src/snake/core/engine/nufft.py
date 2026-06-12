@@ -40,10 +40,10 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         if not isinstance(shot_idx, Sequence):
             shot_idx = [shot_idx]
         head = dataset._dataset["data"][0]["head"]
-        n_samples = head["number_of_samples"]
+        n_samples = head["number_of_samples"] 
         ndim = head["trajectory_dimensions"]
         trajectories = np.zeros((len(shot_idx), n_samples, ndim), dtype=np.float32)
-
+        print(f"Loading {len(shot_idx)} trajectories and {n_samples} samples")
         for i, s in enumerate(shot_idx):
             trajectories[i] = dataset._dataset["data"][s]["traj"].reshape(
                 n_samples, ndim
@@ -87,6 +87,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         trajectories: NDArray,
         nufft_backend: str,
         slice_2d: bool = False,
+        traj_2d: bool = False,
     ) -> np.ndarray:
         """Acquire k-space data with T2s relaxation effect."""
         chunk_size, n_samples, _ = trajectories.shape
@@ -113,8 +114,12 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
                 phantom, dyn_datas, i, sim_conf, aggregate=False
             )
             if slice_2d:
-                slice_loc = round((traj[0, -1] + 0.5) * sim_conf.shape[-1])
-                nufft.samples = traj[:, :2]
+                if traj_2d:
+                    slice_loc = 0
+                    nufft.samples = traj[:, :2]
+                else:
+                    slice_loc = round((traj[0, -1] + 0.5) * sim_conf.shape[-1]) #only work for 3d traj 
+                    nufft.samples = traj[:, :2]
                 if smaps is not None:
                     nufft.smaps = smaps[..., slice_loc]
                 phantom_state = phantom_state[:, None, ..., slice_loc]

@@ -81,6 +81,7 @@ class ConfigSNAKE:
     cache_dir: Path = "${oc.env:PWD}/cache"  # type: ignore
     result_dir: Path = "${oc.env:PWD}/results"  # type: ignore
     filename: Path = "test.mrd"  # type: ignore
+    smaps_filename: Path = "${oc.env:PWD}/smaps.npy"  # type: ignore
 
 
 def conf_validator(cfg: DictConfig) -> ConfigSNAKE:
@@ -145,5 +146,5 @@ def cleanup_cuda() -> None:
 def make_hydra_cli(fun: callable) -> callable:
     """Create a Hydra CLI for the function."""
     return hydra.main(
-        version_base=None, config_path="../../../cli-conf", config_name="config"
+        version_base=None, config_path="../../../cli-conf", config_name="scenario1"
     )(fun)

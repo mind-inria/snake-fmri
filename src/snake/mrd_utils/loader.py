@@ -104,6 +104,7 @@ class MRDLoader(LogMixin):
         stop: int | None = None,
         step: int | None = None,
         shot_dim: bool = False,
+        traj_2d: bool = False,
     ) -> Generator[tuple[int, NDArray[np.float32], NDArray[np.complex64]], None, None]:
         """Iterate over kspace frames of the dataset.
 
@@ -132,7 +133,7 @@ class MRDLoader(LogMixin):
             step = 1
         with self:
             for i in np.arange(start, stop, step):
-                yield i, *self.get_kspace_frame(i, shot_dim=shot_dim)
+                yield i, *self.get_kspace_frame(i, shot_dim=shot_dim, traj_2d=traj_2d)
 
     @overload
     def get_kspace_frame(
@@ -413,6 +414,46 @@ class CartesianFrameDataLoader(MRDLoader):
         mask[traj_locs] = True
         return mask, kspace
 
+class SliceDataloader(MRDLoader):
+    """Load slice MRD files k-space frames iteratively."""
+    def __init__(self,
+                 frame_dl: MRDLoader,
+                 ): 
+        super().__init__(
+            filename=frame_dl._filename,
+            dataset_name=frame_dl._dataset_name,
+            writeable=frame_dl._writeable,
+            swmr=frame_dl._swmr,
+        )
+        #replace by adding an attribute of if_cartesian, also need to change on pysap
+        self.frame = frame_dl
+        self.is_cartesian = isinstance(frame_dl, CartesianFrameDataLoader)
+        self.is_non_cartesian = isinstance(frame_dl, NonCartesianFrameDataLoader)
+        self.get_kspace_frame = self._get_kspace_frame
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.frame, name)
+
+    @property
+    def n_frames(self) -> int:
+        """Number of frames."""
+        return self.frame.n_acquisition 
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the volume."""
+        return self.frame.shape[:2]
+
+    def _get_kspace_frame(
+        self, idx: int, 
+         ) -> tuple[NDArray[np.float32], NDArray[np.complex64]]:
+        """Get the k-space frame."""
+        n_acq_per_frame = self.frame.n_acquisition // self.frame.n_frames
+        traj, data = self.frame.get_kspace_frame(idx // self.frame.n_shots)
+        traj =  traj.reshape(n_acq_per_frame, -1, 3)
+        data = data.reshape(self.frame.n_coils, n_acq_per_frame, -1)
+        shot_loc = idx%self.frame.n_shots
+        return traj[shot_loc,:,:2], data[:,shot_loc,:]
 
 class NonCartesianFrameDataLoader(MRDLoader):
     """Non Cartesian Dataloader.
@@ -430,7 +471,7 @@ class NonCartesianFrameDataLoader(MRDLoader):
     """
 
     def get_kspace_frame(
-        self, idx: int, shot_dim: bool = False
+        self, idx: int, shot_dim: bool = False, traj_2d: bool = False
     ) -> tuple[NDArray[np.float32], NDArray[np.complex64]]:
         """Get the k-space frame and the associated trajectory.
 
@@ -453,14 +494,17 @@ class NonCartesianFrameDataLoader(MRDLoader):
         end = (idx + 1) * n_acq_per_frame
         # Do a single read of the dataset much faster !
         acq = self._dataset["data"][start:end]
-        traj = acq["traj"].reshape(n_acq_per_frame, -1, 3)
+        if traj_2d:
+            traj = acq["traj"].reshape(n_acq_per_frame, -1, 2)
+        else:
+            traj = acq["traj"].reshape(n_acq_per_frame, -1, 3)
         data = acq["data"].view(np.complex64)
         data = data.reshape(-1, self.n_coils, self.n_sample)
         data = np.moveaxis(data, 1, 0)
         data = data.reshape(self.n_coils, n_acq_per_frame, -1)
         if not shot_dim:
             return (
-                traj.reshape(-1, 3),
+                traj.reshape(-1, traj.shape[-1]),
                 data.reshape(self.n_coils, -1),
             )
         return traj, data

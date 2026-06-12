@@ -96,7 +96,6 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
             ),
             dtype=np.complex64,
         )
-
         for i, epi_2d in enumerate(trajectories):
             phantom_state, smaps = get_phantom_state(
                 phantom, dyn_datas, i, sim_conf, aggregate=False
@@ -104,15 +103,15 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
             flat_epi = epi_2d.reshape(-1, 3)
             if slice_2d:
                 # reduce to a single slice for the exicitation / fft is done in 2D.
-                slice_location = flat_epi[0, 0]  # FIXME: the slice is always axial.
-                flat_epi = flat_epi[:, 1:]
-                phantom_slice = phantom_state[:, slice_location]
+                slice_location = flat_epi[0, 2]  # FIXME: the slice is always axial.
+                flat_epi = flat_epi[:, :2]  
+                phantom_slice = phantom_state[..., slice_location] 
                 if smaps is None:
-                    phantom_slice = phantom_slice[:, None, ...]
-                else:
-                    smaps_ = smaps[:, slice_location]
-                    phantom_slice = phantom_slice[:, None, ...] * smaps_
+                    phantom_slice = phantom_slice[..., None]
 
+                else:
+                    smaps_ = smaps[..., slice_location]
+                    phantom_slice = phantom_slice[:, None, ...] * smaps_
                 ksp = fft(phantom_slice, axis=(-2, -1))
             else:
                 if smaps is None:
@@ -151,13 +150,13 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
             phantom_state, smaps = get_phantom_state(phantom, dyn_datas, i, sim_conf)
             flat_epi = epi_2d.reshape(-1, 3)
             if slice_2d:
-                slice_location = flat_epi[0, 0]  # FIXME: the slice is always axial.
-                flat_epi = flat_epi[:, 1:]  # Reduced to 2D.
-                phantom_slice = phantom_state[slice_location]
+                slice_location = flat_epi[0, 2]  # FIXME: the slice is always axial.
+                flat_epi = flat_epi[:,:2]  # Reduced to 2D.
+                phantom_slice = phantom_state[..., slice_location]
                 if smaps is None:
                     phantom_slice = phantom_slice[None, ...]
                 else:
-                    smaps_ = smaps[:, slice_location]
+                    smaps_ = smaps[..., slice_location]
                     phantom_slice = phantom_slice[None, ...] * smaps_
                 ksp = fft(phantom_slice, axis=(-2, -1))
             else:
@@ -172,6 +171,7 @@ class EPIAcquisitionEngine(BaseAcquisitionEngine):
                     trajectories.shape[-3],
                     trajectories.shape[-2],
                 )
+
         return final_ksp
 
     def _write_chunk_data(

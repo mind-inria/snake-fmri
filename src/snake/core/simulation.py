@@ -50,7 +50,7 @@ class HardwareConfig:
     smax: float = 200
     n_coils: int = 8
     dwell_time_ms: float = 1e-3
-    raster_time_ms: float = 5e-3
+    raster_time_ms: float = 1e-2
     field: float = 3.0
 
     _repr_html_ = dataclass_repr_html

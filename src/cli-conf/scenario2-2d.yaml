@@ -5,7 +5,7 @@ defaults:
   - handlers:
     - activation-block
   - sampler:
-    - rotated-stack-of-spiral
+    - stack-of-spiral
   - reconstructors:
       - adjoint
       #- sequential
@@ -21,8 +21,10 @@ sim_conf:
   hardware:
     n_coils: 1
     dwell_time_ms: 0.001
-  shape: [60, 72, 60]
-  fov_mm: [181.0, 217.0, 181.0]
+  fov:
+    res_mm: [1, 1, 1]
+    size: [181, 217, 1]
+    offset: [-90, -125, 10]
 
 phantom:
   name: brainweb
@@ -36,6 +38,8 @@ handlers:
     block_off: 20 #seconds
     duration: 360 # seconds
     delta_r2s: 1000 # millisecond^-1
+    atlas: "hardvard-oxford__cort-maxprob-thr50-1mm"
+    atlas_label: 48
 
 sampler:
   stack-of-spiral:
@@ -57,12 +61,12 @@ engine:
   chunk_size: 10
   model: "simple"
   snr: 10000
-  nufft_backend: "gpuNUFFT"
+  nufft_backend: "cufinufft"
   slice_2d: true
 
 reconstructors:
   adjoint:
-    nufft_backend: "gpuNUFFT"
+    nufft_backend: "cufinufft"
     density_compensation: "pipe"
   # sequential:
   #   nufft_backend: "gpuNUFFT"

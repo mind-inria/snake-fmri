@@ -18,37 +18,39 @@ result_dir: results/scenario1/
 filename:  ${oc.env:PWD}/scenario1_${engine.model}_${engine.snr}.mrd
 
 sim_conf:
-  max_sim_time: 300
-  seq: {TR: 50, TE: 25, FA: 12}
+  max_sim_time: 360
+  seq: {TR: 2000, TE: 40, FA: 73}
   hardware:
-    n_coils: 1
-    dwell_time_ms: 0.005
-  shape: [60, 72, 60]
-  fov_mm: [181.0, 217.0, 181.0]
+    n_coils: 8
+  fov:
+    res_mm: [3, 3, 3]
+    size: [181, 217, 3]
+    offset: [-90, -125, 10]
 
 phantom:
   name: brainweb
-  sub_id: 5
+  sub_id: 4
   tissue_ignore: ["bck"]
-
+  tissue_file: "tissue_7T"
 handlers:
   activation-block:
     event_name: block_on
     block_on: 20 # seconds
     block_off: 20 #seconds
-    duration: 300 # seconds
+    duration: 360 # seconds
     delta_r2s: 1000 # millisecond^-1
 sampler:
   epi-3d:
-    acsz: 1
+    acsz: 0.1
     accelz: 1
-    orderz: CENTER_OUT
+    orderz: TOP_DOWN
 
 engine:
   n_jobs: 10
   chunk_size: 60
   model: "simple"
-  snr: 1000
+  snr: 10000
+  slice_2d: True
 
 reconstructors:
   adjoint: {}

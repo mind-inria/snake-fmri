@@ -52,13 +52,14 @@ def init_nufft(
     data_loader: NonCartesianFrameDataLoader,
     nufft_backend: str,
     density_compensation: bool = False,
+    traj_2d: bool = False,
 ) -> FourierOperatorBase:
     """Initialize the NUFFT operator from the data_loader."""
     from mrinufft import get_operator
 
-    smaps = data_loader.get_smaps()
+    smaps = data_loader.get_smaps().squeeze() if data_loader.get_smaps() is not None else None
     shape = data_loader.shape
-    traj, _ = data_loader.get_kspace_frame(0)
+    traj, _ = data_loader.get_kspace_frame(0, traj_2d=traj_2d)
 
     if data_loader.slice_2d:
         shape = data_loader.shape[:2]

@@ -7,25 +7,26 @@ defaults:
   - sampler:
     - stack-of-spiral
   - reconstructors:
-      - sequential
+      - cg
   - _self_
 
-cache_dir: ${oc.env:PWD}/cache
-result_dir: results
-filename:  ${cache_dir}/scenario2_${engine.model}_${engine.snr}_${sampler.stack-of-spiral.constant}_${sampler.stack-of-spiral.accelz}.mrd
+cache_dir: ${oc.env:PWD}/results
+result_dir: ${oc.env:PWD}/results
+filename:  ${result_dir}/scenario2_${engine.model}_${engine.snr}_${sampler.stack-of-spiral.constant}_${sampler.stack-of-spiral.accelz}.mrd
 
 sim_conf:
-  max_sim_time: 300
-  seq: {TR: 50, TE: 30, FA: 15}
+  max_sim_time: 2
+  seq: {TR: 50, TE: 25, FA: 15}
   hardware:
     n_coils: 8
-    dwell_time_ms: 0.005
-  shape: [60, 72, 60]
-  fov_mm: [181.0, 217.0, 181.0]
+    dwell_time_ms: 0.002
+  fov:
+    res_mm: [3, 3, 3]
+    size: [192.0, 192.0, 120.0]
 
 phantom:
   name: brainweb
-  sub_id: 5
+  sub_id: 44
   tissue_file: "tissue_7T"
 
 handlers:
@@ -38,10 +39,14 @@ handlers:
 
 sampler:
   stack-of-spiral:
-    acsz: 0.1
-    accelz: 8
-    nb_revolutions: 10
+    acsz: 18
+    accelz: 3
+    nb_revolutions: 16
     constant: true
+    orderz: "top-down"
+    spiral_name: "archimedes"
+    pdfz: "uniform"
+    obs_time_ms: 30
 
 engine:
   n_jobs: 5
@@ -51,13 +56,12 @@ engine:
   nufft_backend: "stacked-gpunufft"
 
 reconstructors:
-  sequential:
-      nufft_backend: "stacked-gpunufft"
-      density_compensation: "pipe"
-      restart_strategy: "cold"
-      max_iter_per_frame: 15
-      wavelet: "sym4"
-      threshold: 2e-6
+  cg:
+      nufft_backend: "cufinufft"
+      density_compensation: False
+      restart_strategy: COLD
+      max_iter: 15
+      tol: 2e-6
 
 
 hydra:

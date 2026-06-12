@@ -9,24 +9,27 @@ defaults:
   - handlers:
     - activation-block
   - sampler:
-    - stack-of-spiral
+    - stacked-sequential-load-trajectory
   - reconstructors:
       # - adjoint
-      - sequential
+      #- sequential
+      - cg
   - _self_
 
 cache_dir: ${oc.env:PWD}/cache
-result_dir: results/scenario2
-filename:  ${cache_dir}/scenario2_${engine.model}_${engine.snr}_${sampler.stack-of-spiral.constant}_${sampler.stack-of-spiral.accelz}.mrd
+result_dir: ${oc.env:PWD}/results/scenario2
+filename:  ${result_dir}/scenario2_${engine.model}_${engine.snr}.mrd
 
 sim_conf:
-  max_sim_time: 300
+  max_sim_time: 4
   seq: {TR: 50, TE: 25,  FA: 12}
   hardware:
-    n_coils: 8
+    n_coils: 1
     dwell_time_ms: 0.001
-  shape: [60, 72, 60]
-  fov_mm: [181.0, 217.0, 181.0]
+  fov:
+    res_mm: [3.0, 3.0, 3.0]
+    size: [182, 217, 120]
+    offset: [-90,-125, -60]
 
 phantom:
   name: brainweb
@@ -41,31 +44,47 @@ handlers:
     duration: 300 # seconds
     delta_r2s: 1000 # millisecond^-1
 #    atlas: "hardvard-oxford__cort-maxprob-thr0-1mm"
-    atlas: null
+    atlas: "hardvard-oxford__cort-maxprob-thr50-1mm"
+    atlas_label: 48
 
 sampler:
-  stack-of-spiral:
-    acsz: 0.1
-    accelz: 4
-    nb_revolutions: 12
+  # stack-of-spiral:
+  #   acsz: 0.1
+  #   accelz: 4
+  #   nb_revolutions: 12
+  #   constant: true
+  stacked-sequential-load-trajectory:
+    path: "/volatile/Caini/stimulate/snake/notebook/bin_file_paths.txt"
+    obs_time_ms: 30
+    dwell_time: 0.001
+    raster_time: 0.01
+    accelz: 18
+    acsz: 3
     constant: true
+    constant_2d: true 
+
 
 engine:
   n_jobs: 5
   chunk_size: 180
-  model: "simple"
-  snr: 10000
-  nufft_backend: "stacked-gpunufft"
+  model: "T2s"
+  snr: 1000
+  nufft_backend: "cufinufft"
+
 reconstructors:
   # adjoint:
   #   nufft_backend: "stacked-gpunufft"
   #   density_compensation: "pipe"
-  sequential:
-    nufft_backend: "stacked-gpunufft"
-    density_compensation: false
-    restart_strategy: WARM
-    max_iter_per_frame: 50
-    wavelet: "sym4"
+  # sequential:
+  #   density_compensation: false
+  #   restart_strategy: COLD
+  #   max_iter_per_frame: 50
+  #   wavelet: "sym4"
+  #   optimizer: "fista"
+  cg:
+    max_iter: 30
+    tol: 1e-5
+    restart_strategy: COLD
 
 
 
