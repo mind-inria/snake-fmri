@@ -7,11 +7,13 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from typing import Any
 import numpy as np
 from numpy.typing import NDArray
-from mrinufft.trajectories.maths import R2D
-from mrinufft.trajectories.tools import rotate, stack
-from mrinufft.trajectories.trajectory2D import (
+# Public mri-nufft API (the private module layout changed across versions).
+from mrinufft.trajectories import (
+    R2D,
     initialize_2D_radial,
     initialize_2D_spiral,
+    rotate,
+    stack,
 )
 from mrinufft.trajectories.utils import (
     check_hardware_constraints,
