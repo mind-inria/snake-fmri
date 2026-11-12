@@ -56,8 +56,13 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         sim_conf: SimConfig,
         backend: str,
         slice_2d: bool = False,
+        smaps: NDArray | None = None,
     ) -> FourierOperatorBase:
-        """Initialize the nufft operator."""
+        """Initialize the nufft operator.
+
+        The coil maps are given at creation: some backends (gpunufft) cannot
+        receive coil maps later when created without them.
+        """
         kwargs = {}
         if slice_2d and "stacked" in backend:
             raise ValueError("Stacked NUFFT does not support 2D slice")
@@ -72,11 +77,30 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
             samples,  # will be updated in the loop
             shape=shape_,
             n_coils=sim_conf.hardware.n_coils,
-            smaps=None,
+            smaps=smaps,
             density=False,
             squeeze_dims=False,
             **kwargs,
         )
+        return nufft
+
+    @staticmethod
+    def _update_nufft(
+        nufft: FourierOperatorBase | None,
+        samples: NDArray,
+        smaps: NDArray | None,
+        sim_conf: SimConfig,
+        backend: str,
+        slice_2d: bool = False,
+    ) -> FourierOperatorBase:
+        """Create the operator at the first shot, else update its samples and maps."""
+        if nufft is None:
+            return NufftAcquisitionEngine._init_model_nufft(
+                samples, sim_conf, backend=backend, slice_2d=slice_2d, smaps=smaps
+            )
+        nufft.samples = samples
+        if smaps is not None:
+            nufft.smaps = smaps
         return nufft
 
     @staticmethod
@@ -94,34 +118,30 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         final_ksp = np.zeros(
             (chunk_size, sim_conf.hardware.n_coils, n_samples), dtype=np.complex64
         )
-        # (n_tissues_true, n_samples) Filter the tissues that have NaN Values.
-        nufft = NufftAcquisitionEngine._init_model_nufft(
-            trajectories[0],
-            sim_conf,
-            backend=nufft_backend,
-            slice_2d=slice_2d,
-        )
+        nufft = None  # created at the first shot, with its coil maps
 
         echo_idx = np.argmin(np.sum(np.abs(trajectories[0]) ** 2), axis=-1)
 
         t2s_decay = BaseAcquisitionEngine._job_get_T2s_decay(
             sim_conf.hardware.dwell_time_ms, echo_idx, n_samples, phantom
         )
-        nufft.n_batchs = len(phantom.masks)  # number of tissues.
         for i, traj in enumerate(trajectories):
             phantom_state, smaps = get_phantom_state(
                 phantom, dyn_datas, i, sim_conf, aggregate=False
             )
             if slice_2d:
                 slice_loc = round((traj[0, -1] + 0.5) * sim_conf.shape[-1])
-                nufft.samples = traj[:, :2]
+                samples = traj[:, :2]
                 if smaps is not None:
-                    nufft.smaps = smaps[..., slice_loc]
+                    smaps = smaps[..., slice_loc]
                 phantom_state = phantom_state[:, None, ..., slice_loc]
             else:
-                nufft.smaps = smaps
+                samples = traj
                 phantom_state = phantom_state[:, None, ...]
-                nufft.samples = traj
+            nufft = NufftAcquisitionEngine._update_nufft(
+                nufft, samples, smaps, sim_conf, nufft_backend, slice_2d
+            )
+            nufft.n_batchs = len(phantom.masks)  # number of tissues.
             ksp = nufft.op(phantom_state)
             # apply the T2s and sum over tissues
             # final_ksp[i] = np.sum(ksp * t2s_decay[:, None, :], axis=0)
@@ -144,26 +164,22 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         final_ksp = np.zeros(
             (chunk_size, sim_conf.hardware.n_coils, n_samples), dtype=np.complex64
         )
-        nufft = NufftAcquisitionEngine._init_model_nufft(
-            trajectories[0],
-            sim_conf,
-            backend=nufft_backend,
-            slice_2d=slice_2d,
-        )
-        # (n_tissues_true, n_samples) Filter the tissues that have NaN Values
+        nufft = None  # created at the first shot, with its coil maps
         for i, traj in enumerate(trajectories):
             phantom_state, smaps = get_phantom_state(phantom, dyn_datas, i, sim_conf)
-            nufft.n_batchs = 1  # number of tissues.
             if slice_2d:
                 slice_loc = int((traj[0, -1] + 0.5) * sim_conf.shape[-1])
-                nufft.samples = traj[:, :2]
+                samples = traj[:, :2]
                 if smaps is not None:
-                    nufft.smaps = smaps[..., slice_loc]
+                    smaps = smaps[..., slice_loc]
                 phantom_state = phantom_state[None, ..., slice_loc]
             else:
-                nufft.samples = traj
-                nufft.smaps = smaps
+                samples = traj
                 phantom_state = phantom_state[None, ...]
+            nufft = NufftAcquisitionEngine._update_nufft(
+                nufft, samples, smaps, sim_conf, nufft_backend, slice_2d
+            )
+            nufft.n_batchs = 1  # number of tissues.
             final_ksp[i] = nufft.op(phantom_state)
         return final_ksp
 
