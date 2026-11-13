@@ -135,8 +135,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
             slice_2d=slice_2d,
         )
 
-        # time from the echo of each sample (the echo index used to be computed
-        # without an axis, always giving 0: decay referenced to the readout start)
+        # time from the echo of each sample
         t_ms = NufftAcquisitionEngine._sample_times_ms(
             sim_conf, trajectories, sample_times_ms
         )
