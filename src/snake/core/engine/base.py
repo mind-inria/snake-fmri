@@ -71,6 +71,18 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
     ) -> Sequence[int]:
         return range(data_loader.n_acquisition)
 
+    def _job_post_process(
+        self,
+        ksp: NDArray,
+        chunk: Sequence[int],
+        n_acquisition: int,
+        sim_conf: SimConfig,
+        trajectories: NDArray,
+        **kwargs: Any,
+    ) -> NDArray:
+        """Modify the k-space of a chunk after acquisition (default: unchanged)."""
+        return ksp
+
     @overload
     def _job_trajectories(
         self,
@@ -160,6 +172,9 @@ class BaseAcquisitionEngine(metaclass=MetaEngine):
             else:
                 with Phantom.from_shared_memory(*shared_phantom_props) as phantom:
                     ksp = _job_model(phantom, ddatas, sim_conf, trajs, **kwargs)
+            ksp = self._job_post_process(
+                ksp, chunk, data_loader.n_acquisition, sim_conf, trajs, **kwargs
+            )
 
         chunk_file = os.path.join(tmp_dir, f"partial_{chunk[0]}-{chunk[-1]}.npy")
         np.save(chunk_file, ksp)
