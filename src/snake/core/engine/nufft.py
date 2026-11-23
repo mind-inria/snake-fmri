@@ -1,6 +1,7 @@
 """Acquisition engine using nufft."""
 
 from collections.abc import Sequence
+from typing import Any
 
 import ismrmrd as mrd
 import numpy as np
@@ -8,6 +9,7 @@ from mrinufft.operators import FourierOperatorBase, get_operator
 from numpy.typing import NDArray
 
 from snake.core.phantom import DynamicData, Phantom
+from snake.core.phantom.utils import PropTissueEnum
 from snake.core.simulation import SimConfig
 
 from .base import BaseAcquisitionEngine
@@ -80,6 +82,31 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         return nufft
 
     @staticmethod
+    def _sample_times_ms(
+        sim_conf: SimConfig,
+        trajectories: NDArray,
+        sample_times_ms: NDArray | None = None,
+    ) -> NDArray:
+        """Time of each sample of a shot relative to the echo (ms).
+
+        Either given explicitly (e.g. ramp-sampled EPI, where the samples are not
+        equally spaced in time), or from the dwell time, with the echo at the sample
+        of the first shot closest to the k-space center.
+        """
+        n_samples = trajectories.shape[1]
+        if sample_times_ms is not None:
+            t = np.asarray(sample_times_ms, dtype=np.float32).ravel()
+            if t.size != n_samples:
+                raise ValueError(
+                    f"sample_times_ms has {t.size} values for {n_samples} samples/shot."
+                )
+            return t
+        echo_idx = int(np.argmin(np.sum(np.abs(trajectories[0]) ** 2, axis=-1)))
+        return sim_conf.hardware.dwell_time_ms * (
+            np.arange(n_samples, dtype=np.float32) - echo_idx
+        )
+
+    @staticmethod
     def _job_model_T2s(
         phantom: Phantom,
         dyn_datas: list[DynamicData],
@@ -87,8 +114,14 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         trajectories: NDArray,
         nufft_backend: str,
         slice_2d: bool = False,
+        sample_times_ms: NDArray | None = None,
+        **kwargs: Any,
     ) -> np.ndarray:
-        """Acquire k-space data with T2s relaxation effect."""
+        """Acquire k-space data with T2s relaxation effect.
+
+        ``sample_times_ms`` optionally gives the time of each sample of a shot
+        relative to the echo (default: from the dwell time).
+        """
         chunk_size, n_samples, _ = trajectories.shape
 
         final_ksp = np.zeros(
@@ -102,11 +135,11 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
             slice_2d=slice_2d,
         )
 
-        echo_idx = np.argmin(np.sum(np.abs(trajectories[0]) ** 2), axis=-1)
-
-        t2s_decay = BaseAcquisitionEngine._job_get_T2s_decay(
-            sim_conf.hardware.dwell_time_ms, echo_idx, n_samples, phantom
+        # time from the echo of each sample
+        t_ms = NufftAcquisitionEngine._sample_times_ms(
+            sim_conf, trajectories, sample_times_ms
         )
+        t2s_decay = np.exp(-t_ms[None, :] / phantom.props[:, PropTissueEnum.T2s, None])
         nufft.n_batchs = len(phantom.masks)  # number of tissues.
         for i, traj in enumerate(trajectories):
             phantom_state, smaps = get_phantom_state(
@@ -137,6 +170,7 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
         trajectories: NDArray,
         nufft_backend: str,
         slice_2d: bool = False,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Acquire k-space data. No T2s decay."""
         chunk_size, n_samples, _ = trajectories.shape
