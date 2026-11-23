@@ -13,7 +13,7 @@ from snake.core.phantom.utils import PropTissueEnum
 from snake.core.simulation import SimConfig
 
 from .base import BaseAcquisitionEngine
-from .utils import get_phantom_state
+from .utils import apply_field_drift, get_phantom_state
 
 
 class NufftAcquisitionEngine(BaseAcquisitionEngine):
@@ -24,6 +24,30 @@ class NufftAcquisitionEngine(BaseAcquisitionEngine):
     model: str = "simple"
     snr: float = np.inf
     slice_2d: bool = False
+    field_drift_hz: tuple[float, float] | None = None
+    """Uniform off-resonance drifting linearly from the first to the last shot (Hz),
+    added to any model (see :func:`snake.core.engine.utils.apply_field_drift`)."""
+
+    def _job_post_process(
+        self,
+        ksp: NDArray,
+        chunk: Sequence[int],
+        n_acquisition: int,
+        sim_conf: SimConfig,
+        trajectories: NDArray,
+        **kwargs: Any,
+    ) -> NDArray:
+        if self.field_drift_hz is None:
+            return ksp
+        sample_times_ms = kwargs.get("sample_times_ms")
+        if sample_times_ms is None:  # echo at the sample closest to the k-space centre
+            n_samples = trajectories.shape[1]
+            echo = int(np.argmin(np.sum(np.abs(trajectories[0]) ** 2, axis=-1)))
+            sample_times_ms = sim_conf.hardware.dwell_time_ms * (np.arange(n_samples) - echo)
+        return apply_field_drift(
+            np.asarray(ksp), np.asarray(chunk), n_acquisition, sample_times_ms,
+            sim_conf.seq.TE, tuple(self.field_drift_hz),
+        )
 
     def _job_trajectories(
         self,
